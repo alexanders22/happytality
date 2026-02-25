@@ -18,6 +18,18 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
+html[data-theme='dark'] {
+  --paper: #090c12;
+  --paper-2: #121722;
+  --ink: #edf0f5;
+  --muted: #9ca7b8;
+  --line: #232a38;
+  --brand: #4f86c9;
+  --brand-soft: #162233;
+  --accent: #f2b680;
+  --navy: #080b11;
+}
+
 html,
 body,
 #root {
@@ -31,6 +43,13 @@ body {
     radial-gradient(circle at 90% 8%, #f2f7fb 0%, transparent 28%), var(--paper);
   color: var(--ink);
   font-family: 'Inter', sans-serif;
+}
+
+html[data-theme='dark'] body {
+  background:
+    radial-gradient(circle at 15% 2%, rgba(79, 134, 201, 0.12) 0%, transparent 30%),
+    radial-gradient(circle at 90% 8%, rgba(242, 182, 128, 0.08) 0%, transparent 28%),
+    var(--paper);
 }
 
 button,
@@ -72,4 +91,41 @@ html:lang(ka) h5,
 html:lang(ka) h6 {
   font-family: 'BPG Nino Mtavruli', sans-serif;
   letter-spacing: 0.01em;
+}
+
+@keyframes heroMarqueeUp {
+  0% {
+    transform: translateY(0);
+  }
+  100% {
+    transform: translateY(-50%);
+  }
+}
+
+@keyframes heroMarqueeDown {
+  0% {
+    transform: translateY(-50%);
+  }
+  100% {
+    transform: translateY(0);
+  }
+}
+
+.hero-marquee-track {
+  animation-name: heroMarqueeUp;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+  will-change: transform;
+}
+
+.hero-marquee-track.hero-marquee-reverse {
+  animation-name: heroMarqueeDown;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hero-marquee-track,
+  .hero-marquee-track.hero-marquee-reverse {
+    animation: none !important;
+    transform: none !important;
+  }
 }

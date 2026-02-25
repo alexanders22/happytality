@@ -14,10 +14,13 @@ import {
 import { api, type ApiCourse, type ApiInstructor, type ApiLocale, type ApiUser, localized } from './lib/api'
 
 type CartState = Awaited<ReturnType<typeof api.cart>> | null
+type ThemeMode = 'light' | 'dark'
 
 type AppContextValue = {
   locale: ApiLocale
   setLocale: (locale: ApiLocale) => void
+  theme: ThemeMode
+  setTheme: (theme: ThemeMode) => void
   token: string | null
   user: ApiUser | null
   guestToken: string | null
@@ -110,6 +113,16 @@ const heroImages = [
   'https://images.unsplash.com/photo-1465146344425-f00d5f5c8f07?auto=format&fit=crop&w=800&q=80',
   'https://images.unsplash.com/photo-1483985988355-763728e1935b?auto=format&fit=crop&w=800&q=80',
   'https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&w=800&q=80',
+]
+
+const heroGalleryImages = [
+  ...heroImages,
+  'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=900&q=80',
+  'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=900&q=80',
+  'https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?auto=format&fit=crop&w=900&q=80',
+  'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?auto=format&fit=crop&w=900&q=80',
+  'https://images.unsplash.com/photo-1545239351-1141bd82e8a6?auto=format&fit=crop&w=900&q=80',
+  'https://images.unsplash.com/photo-1521737604893-d14cc237f11d?auto=format&fit=crop&w=900&q=80',
 ]
 
 const fallbackInstructors = [
@@ -254,10 +267,66 @@ function initials(name?: string | null) {
   return parts.slice(0, 2).map((p) => p[0]?.toUpperCase()).join('')
 }
 
+function HeroGalleryColumn({
+  images,
+  duration = 22,
+  reverse = false,
+  offset = 0,
+}: {
+  images: string[]
+  duration?: number
+  reverse?: boolean
+  offset?: number
+}) {
+  const doubled = [...images, ...images]
+  return (
+    <div className="relative h-[520px] overflow-hidden rounded-[20px]">
+      <div
+        className={`hero-marquee-track ${reverse ? 'hero-marquee-reverse' : ''}`}
+        style={{ animationDuration: `${duration}s`, animationDelay: `${offset}s` }}
+      >
+        {doubled.map((src, index) => (
+          <div key={`${src}-${index}`} className="mb-3 overflow-hidden rounded-[16px] border border-white/10 bg-black/10">
+            <img src={src} alt="" className="h-[160px] w-full object-cover" loading="lazy" />
+          </div>
+        ))}
+      </div>
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-14 bg-gradient-to-b from-[var(--paper)] to-transparent" />
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-14 bg-gradient-to-t from-[var(--paper)] to-transparent" />
+    </div>
+  )
+}
+
+function HeroMovingGallery({ dark = false }: { dark?: boolean }) {
+  return (
+    <div
+      className={`relative overflow-hidden rounded-[26px] border p-3 shadow-[0_25px_60px_-40px_rgba(0,0,0,0.35)] ${
+        dark ? 'border-white/10 bg-[#0f131b]' : 'border-[var(--line)] bg-white/60'
+      }`}
+    >
+      <div className="pointer-events-none absolute inset-0 opacity-70">
+        <div className={`absolute -top-8 right-10 h-24 w-24 rounded-full blur-2xl ${dark ? 'bg-[var(--brand)]/35' : 'bg-[var(--brand)]/20'}`} />
+        <div className={`absolute bottom-8 left-6 h-20 w-20 rounded-full blur-2xl ${dark ? 'bg-[var(--accent)]/20' : 'bg-[var(--accent)]/20'}`} />
+      </div>
+      <div className="relative grid grid-cols-2 gap-3 md:grid-cols-3">
+        <HeroGalleryColumn images={heroGalleryImages.slice(0, 5)} duration={20} />
+        <HeroGalleryColumn images={heroGalleryImages.slice(3, 8)} duration={24} reverse offset={-4} />
+        <div className="hidden md:block">
+          <HeroGalleryColumn images={heroGalleryImages.slice(6, 11)} duration={18} offset={-7} />
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function AppProvider({ children }: { children: ReactNode }) {
   const [locale, setLocale] = useState<ApiLocale>(() => {
     const saved = localStorage.getItem('ht_locale') as ApiLocale | null
     return saved && ['en', 'ka', 'ru'].includes(saved) ? saved : 'en'
+  })
+  const [theme, setTheme] = useState<ThemeMode>(() => {
+    const saved = localStorage.getItem('ht_theme') as ThemeMode | null
+    return saved === 'dark' || saved === 'light' ? saved : 'light'
   })
   const [token, setToken] = useState<string | null>(() => localStorage.getItem('ht_token'))
   const [user, setUser] = useState<ApiUser | null>(() => {
@@ -272,6 +341,11 @@ function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     localStorage.setItem('ht_locale', locale)
   }, [locale])
+
+  useEffect(() => {
+    localStorage.setItem('ht_theme', theme)
+    document.documentElement.dataset.theme = theme
+  }, [theme])
 
   useEffect(() => {
     document.documentElement.lang = locale
@@ -409,6 +483,8 @@ function AppProvider({ children }: { children: ReactNode }) {
     () => ({
       locale,
       setLocale,
+      theme,
+      setTheme,
       token,
       user,
       guestToken,
@@ -424,7 +500,7 @@ function AppProvider({ children }: { children: ReactNode }) {
       removeCartItem,
       clearCart,
     }),
-    [locale, token, user, guestToken, cart, cartBusy, authBusy],
+    [locale, theme, token, user, guestToken, cart, cartBusy, authBusy],
   )
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>
@@ -439,7 +515,7 @@ function SectionLabel({ children }: { children: string }) {
 }
 
 function Shell() {
-  const { locale, setLocale, cart, user, logout } = useApp()
+  const { locale, setLocale, theme, setTheme, cart, user, logout } = useApp()
   const navigate = useNavigate()
   const [q, setQ] = useState('')
 
@@ -554,6 +630,15 @@ function Shell() {
               <path d="M12 4a4 4 0 0 0-4 4v2.4c0 .8-.2 1.5-.6 2.2L6 15h12l-1.4-2.4a4.4 4.4 0 0 1-.6-2.2V8a4 4 0 0 0-4-4Z" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
               <path d="M10 18a2 2 0 0 0 4 0" strokeWidth="1.6" strokeLinecap="round" />
             </svg>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+            className="grid size-10 place-items-center rounded-full border border-[var(--line)] bg-white"
+            title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+          >
+            {theme === 'dark' ? '☀' : '☾'}
           </button>
 
           <Link to="/cart" className="relative rounded-full border border-[var(--line)] bg-white px-3 py-2 text-xs font-semibold">
@@ -740,7 +825,7 @@ function PageSection({ title, subtitle, actions }: { title: string; subtitle?: s
 }
 
 function LandingPage() {
-  const { locale, addToCart } = useApp()
+  const { locale, theme, addToCart } = useApp()
   const navigate = useNavigate()
   const [landing, setLanding] = useState<any>(null)
   const [courses, setCourses] = useState<ApiCourse[]>(fallbackCourses as ApiCourse[])
@@ -795,35 +880,44 @@ function LandingPage() {
   const scrollBy = (ref: RefObject<HTMLDivElement | null>, delta: number) => {
     ref.current?.scrollBy({ left: delta, behavior: 'smooth' })
   }
+  const isDark = theme === 'dark'
 
   return (
     <>
-      <section className="mt-9 grid gap-8 lg:grid-cols-[1.05fr_0.95fr] lg:items-center">
+      <section
+        className={`mt-9 grid gap-8 rounded-[28px] border p-4 sm:p-6 lg:grid-cols-[1.05fr_0.95fr] lg:items-center ${
+          isDark
+            ? 'border-white/10 bg-[#090c12] shadow-[0_30px_80px_-50px_rgba(0,0,0,0.9)]'
+            : 'border-transparent bg-transparent'
+        }`}
+      >
         <div className="px-1">
-          <p className="text-[10px] font-semibold tracking-[0.2em] text-[var(--muted)] uppercase">
+          <p className={`text-[10px] font-semibold tracking-[0.2em] uppercase ${isDark ? 'text-white/65' : 'text-[var(--muted)]'}`}>
             {loading ? 'Loading academy data...' : 'Get unlimited access to thousands of bite-sized lessons'}
           </p>
-          <h1 className="mt-5 max-w-[560px] text-4xl leading-[0.95] font-extrabold tracking-tight text-[#131313] sm:text-5xl lg:text-[56px]">
+          <h1 className={`mt-5 max-w-[560px] text-4xl leading-[0.95] font-extrabold tracking-tight sm:text-5xl lg:text-[56px] ${isDark ? 'text-white' : 'text-[#131313]'}`}>
             {t(locale, 'landingTitle')}
           </h1>
-          <p className="mt-4 max-w-[520px] text-sm leading-relaxed text-[var(--muted)] sm:text-base">
+          <p className={`mt-4 max-w-[520px] text-sm leading-relaxed sm:text-base ${isDark ? 'text-white/75' : 'text-[var(--muted)]'}`}>
             {t(locale, 'landingSubtitle')}
           </p>
           <div className="mt-8 flex flex-wrap items-center gap-4">
             <button
               type="button"
               onClick={() => navigate('/courses')}
-              className="rounded-full bg-black px-5 py-3 text-xs font-semibold tracking-[0.16em] text-white uppercase shadow-[0_10px_24px_-14px_rgba(0,0,0,0.6)]"
+              className={`rounded-full px-5 py-3 text-xs font-semibold tracking-[0.16em] text-white uppercase shadow-[0_10px_24px_-14px_rgba(0,0,0,0.6)] ${
+                isDark ? 'bg-[var(--brand)]' : 'bg-black'
+              }`}
             >
               {t(locale, 'startLearning')}
             </button>
             <button
               type="button"
               onClick={() => setVideoOpen((v) => !v)}
-              className="inline-flex items-center gap-3 text-xs font-semibold tracking-[0.14em] text-[#1f1f1f] uppercase"
+              className={`inline-flex items-center gap-3 text-xs font-semibold tracking-[0.14em] uppercase ${isDark ? 'text-white' : 'text-[#1f1f1f]'}`}
             >
-              <span className="grid size-10 place-items-center rounded-full border border-[var(--line)] bg-white">
-                <span className="ml-0.5 inline-block size-0 border-y-[5px] border-y-transparent border-l-[8px] border-l-black" />
+              <span className={`grid size-10 place-items-center rounded-full border ${isDark ? 'border-white/20 bg-white/5' : 'border-[var(--line)] bg-white'}`}>
+                <span className={`ml-0.5 inline-block size-0 border-y-[5px] border-y-transparent ${isDark ? 'border-l-[8px] border-l-white' : 'border-l-[8px] border-l-black'}`} />
               </span>
               {videoOpen ? 'Hide intro' : 'Play intro'}
             </button>
@@ -839,12 +933,12 @@ function LandingPage() {
                 />
               ))}
             </div>
-            <p className="text-xs text-[var(--muted)]">
-              Join <span className="font-semibold text-black">{Number(learnersCount).toLocaleString()}</span> learners worldwide
+            <p className={`text-xs ${isDark ? 'text-white/70' : 'text-[var(--muted)]'}`}>
+              Join <span className={`font-semibold ${isDark ? 'text-white' : 'text-black'}`}>{Number(learnersCount).toLocaleString()}</span> learners worldwide
             </p>
           </div>
           {videoOpen ? (
-            <div className="mt-6 overflow-hidden rounded-[16px] border border-[var(--line)] bg-black">
+            <div className={`mt-6 overflow-hidden rounded-[16px] border ${isDark ? 'border-white/10 bg-black' : 'border-[var(--line)] bg-black'}`}>
               <video controls className="h-[220px] w-full object-cover sm:h-[280px]" poster={heroImages[0]}>
                 <source src="https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4" type="video/mp4" />
               </video>
@@ -852,25 +946,19 @@ function LandingPage() {
           ) : null}
         </div>
 
-        <div className="grid grid-cols-2 gap-2 rounded-[26px] bg-white/60 p-2 shadow-[0_25px_60px_-40px_rgba(0,0,0,0.35)]">
-          {heroImages.map((src, index) => (
-            <div key={src} className="overflow-hidden rounded-[22px]">
-              <img src={src} alt={`Hero ${index + 1}`} className="h-full min-h-[170px] w-full object-cover" />
-            </div>
-          ))}
-        </div>
+        <HeroMovingGallery dark={isDark} />
       </section>
 
       <section className="mt-16" id="instructors">
         <div className="mb-5 flex items-center justify-between">
           <SectionLabel>Popular instructors</SectionLabel>
           <div className="hidden gap-2 sm:flex">
-            <button onClick={() => scrollBy(instructorSliderRef, -420)} className="grid size-8 place-items-center rounded-full border border-[var(--line)] bg-white">‹</button>
-            <button onClick={() => scrollBy(instructorSliderRef, 420)} className="grid size-8 place-items-center rounded-full border border-[var(--line)] bg-white">›</button>
+            <button onClick={() => scrollBy(instructorSliderRef, -420)} className={`grid size-8 place-items-center rounded-full border ${isDark ? 'border-white/15 bg-white/5 text-white' : 'border-[var(--line)] bg-white'}`}>‹</button>
+            <button onClick={() => scrollBy(instructorSliderRef, 420)} className={`grid size-8 place-items-center rounded-full border ${isDark ? 'border-white/15 bg-white/5 text-white' : 'border-[var(--line)] bg-white'}`}>›</button>
           </div>
         </div>
 
-        <div className="relative overflow-hidden rounded-[20px] bg-[#111] shadow-[0_25px_60px_-45px_rgba(0,0,0,0.8)]">
+        <div className={`relative overflow-hidden rounded-[20px] ${isDark ? 'bg-[#05070a]' : 'bg-[#111]'} shadow-[0_25px_60px_-45px_rgba(0,0,0,0.8)]`}>
           <img src={heroImages[0]} alt="Featured" className="h-[220px] w-full object-cover opacity-80 sm:h-[300px]" />
           <div className="absolute inset-0 bg-gradient-to-r from-black/60 via-black/15 to-black/55" />
           <div className="absolute inset-0 flex items-end justify-between gap-4 p-5 sm:items-center sm:p-8">
