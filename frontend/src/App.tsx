@@ -161,6 +161,79 @@ const fallbackCourses = [
   },
 ] as any[]
 
+const browseTopics = [
+  { slug: 'neurographica', label: 'Neurographica' },
+  { slug: 'body', label: 'Body' },
+  { slug: 'esoteric', label: 'Esoteric' },
+  { slug: 'astrology', label: 'Astrology' },
+  { slug: 'awakening', label: 'Awakening' },
+  { slug: 'healing', label: 'Healing' },
+  { slug: 'psychology', label: 'Psychology' },
+  { slug: 'energy', label: 'Energy' },
+  { slug: 'manifestation', label: 'Manifestation' },
+  { slug: 'recorded-courses', label: 'Recorded Courses' },
+  { slug: 'live-courses', label: 'Live Courses' },
+  { slug: 'webinars', label: 'Webinars' },
+  { slug: 'retreats', label: 'Retreats' },
+  { slug: 'offline-workshops', label: 'Offline Workshops' },
+]
+
+type DemoMessageThread = {
+  id: string
+  title: string
+  course?: string
+  participants: string[]
+  unread: number
+  updatedAt: string
+  messages: Array<{ id: string; author: string; role: 'student' | 'instructor' | 'admin'; text: string; time: string }>
+}
+
+function getDemoThreads(role: 'student' | 'instructor' | 'admin' | string): DemoMessageThread[] {
+  const base: DemoMessageThread[] = [
+    {
+      id: 'th-1',
+      title: 'Homework feedback: Module 2',
+      course: 'Big Win: Growth Marketing Playbook',
+      participants: ['Demo Student', 'Mark Cuban', 'Happytality Admin'],
+      unread: role === 'student' ? 1 : 0,
+      updatedAt: '2m ago',
+      messages: [
+        { id: 'm1', author: 'Demo Student', role: 'student', text: 'I uploaded the assignment. Can you review section 2?', time: '10:14' },
+        { id: 'm2', author: 'Mark Cuban', role: 'instructor', text: 'Received. I will review today and leave comments.', time: '10:21' },
+        { id: 'm3', author: 'Happytality Admin', role: 'admin', text: 'Reminder: attach final PDF to keep it in course history.', time: '10:24' },
+      ],
+    },
+    {
+      id: 'th-2',
+      title: 'Webinar schedule update',
+      course: 'Live Webinar: Sacred Rhythm',
+      participants: ['Registered students', 'Instructor team', 'Admin support'],
+      unread: role === 'instructor' ? 2 : 0,
+      updatedAt: '18m ago',
+      messages: [
+        { id: 'm4', author: 'Happytality Admin', role: 'admin', text: 'Webinar moved to 20:00 Tbilisi time. Notification sent to all learners.', time: '09:40' },
+        { id: 'm5', author: 'Mark Cuban', role: 'instructor', text: 'Confirmed. I will upload an updated agenda trailer.', time: '09:48' },
+      ],
+    },
+    {
+      id: 'th-3',
+      title: 'Payment and enrollment support',
+      course: 'Offline Workshop: Tbilisi Immersion',
+      participants: ['Demo Student', 'Support Admin'],
+      unread: role === 'admin' ? 1 : 0,
+      updatedAt: '1h ago',
+      messages: [
+        { id: 'm6', author: 'Demo Student', role: 'student', text: 'I paid but my enrollment status is still pending.', time: '08:58' },
+        { id: 'm7', author: 'Happytality Admin', role: 'admin', text: 'We are checking the payment callback and will confirm shortly.', time: '09:03' },
+      ],
+    },
+  ]
+
+  if (role === 'student') return base.filter((t) => t.participants.join(' ').includes('Student') || t.id !== 'th-2')
+  if (role === 'instructor') return base.filter((t) => t.id !== 'th-3' || t.course?.includes('Workshop'))
+  return base
+}
+
 function t(locale: ApiLocale, key: string) {
   return dictionary[locale][key] || key
 }
@@ -172,6 +245,12 @@ function textOf(value: any, locale: ApiLocale) {
 function money(value: any, currency = 'USD') {
   const num = Number(value ?? 0)
   return new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(Number.isFinite(num) ? num : 0)
+}
+
+function initials(name?: string | null) {
+  const parts = (name || '').trim().split(/\s+/).filter(Boolean)
+  if (!parts.length) return 'HT'
+  return parts.slice(0, 2).map((p) => p[0]?.toUpperCase()).join('')
 }
 
 function AppProvider({ children }: { children: ReactNode }) {
@@ -361,11 +440,52 @@ function Shell() {
 
   return (
     <PageContainer>
-      <header className="sticky top-3 z-20 flex items-center justify-between gap-4 rounded-full border border-[var(--line)] bg-white/80 px-4 py-3 backdrop-blur-sm sm:px-5">
-        <div className="flex items-center gap-5">
-          <Link to="/" className="leading-none">
-            <img src="/logo.svg" alt="logo" className="h-10 w-10" />
+      <header className="sticky top-3 z-30 flex items-center justify-between gap-4 rounded-full border border-[var(--line)] bg-white/85 px-4 py-3 backdrop-blur-sm sm:px-5">
+        <div className="flex min-w-0 items-center gap-3 sm:gap-5">
+          <Link to="/" className="leading-none w-[100px]">
+            <img src="/logo.svg" alt="logo" className="w-auto h-auto" />
           </Link>
+
+          <details className="relative hidden md:block">
+            <summary className="list-none cursor-pointer rounded-full border border-[var(--line)] bg-white px-3 py-2 text-xs font-semibold">
+              Browse
+            </summary>
+            <div className="absolute left-0 top-[calc(100%+10px)] w-[720px] rounded-[18px] border border-[var(--line)] bg-white p-4 shadow-[0_30px_60px_-35px_rgba(0,0,0,0.45)]">
+              <div className="grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
+                <div className="rounded-[14px] border border-[var(--line)] bg-[var(--paper-2)] p-4">
+                  <p className="text-[10px] font-semibold tracking-[0.16em] uppercase text-[var(--muted)]">Explore by goal</p>
+                  <div className="mt-3 space-y-2">
+                    {[
+                      ['Learn AI', '/courses?q=ai'],
+                      ['Launch a new career', '/courses?sort=popular'],
+                      ['Prepare for certification', '/courses?category=webinars'],
+                      ['Practice with role play', '/courses?category=live-courses'],
+                    ].map(([label, href]) => (
+                      <Link key={label} to={href} className="flex items-center justify-between rounded-[10px] bg-white px-3 py-2 text-sm hover:border-black">
+                        <span>{label}</span>
+                        <span className="text-[var(--muted)]">›</span>
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <p className="text-[10px] font-semibold tracking-[0.16em] uppercase text-[var(--muted)]">Categories</p>
+                  <div className="mt-3 grid grid-cols-2 gap-2">
+                    {browseTopics.map((topic) => (
+                      <Link
+                        key={topic.slug}
+                        to={`/courses?category=${encodeURIComponent(topic.slug)}`}
+                        className="rounded-[10px] border border-[var(--line)] px-3 py-2 text-sm hover:border-black hover:bg-[var(--paper-2)]"
+                      >
+                        {topic.label}
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </details>
+
           <nav className="hidden items-center gap-4 text-sm text-[var(--muted)] md:flex">
             <NavLink to="/" className={({ isActive }) => (isActive ? 'text-black' : 'hover:text-black')} end>
               {t(locale, 'home')}
@@ -376,15 +496,12 @@ function Shell() {
             <NavLink to="/courses" className={({ isActive }) => (isActive ? 'text-black' : 'hover:text-black')}>
               {t(locale, 'courses')}
             </NavLink>
-            <NavLink to="/about" className={({ isActive }) => (isActive ? 'text-black' : 'hover:text-black')}>
-              {t(locale, 'about')}
-            </NavLink>
           </nav>
         </div>
 
         <div className="flex items-center gap-2 sm:gap-3">
           <form
-            className="hidden items-center gap-2 rounded-full border border-[var(--line)] bg-white px-3 py-2 md:flex"
+            className="hidden items-center gap-2 rounded-full border border-[var(--line)] bg-white px-3 py-2 lg:flex"
             onSubmit={(e) => {
               e.preventDefault()
               navigate(`/courses?q=${encodeURIComponent(q)}`)
@@ -405,12 +522,34 @@ function Shell() {
           <select
             value={locale}
             onChange={(e) => setLocale(e.target.value as ApiLocale)}
-            className="rounded-full border border-[var(--line)] bg-white px-2 py-2 text-xs"
+            className="rounded-full border border-[var(--line)] bg-white px-2 py-2 text-xs hidden sm:block"
           >
             <option value="en">EN</option>
             <option value="ka">KA</option>
             <option value="ru">RU</option>
           </select>
+
+          <Link
+            to="/messages"
+            className="relative hidden sm:grid size-10 place-items-center rounded-full border border-[var(--line)] bg-white"
+            title="Messages"
+          >
+            <svg viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor">
+              <path d="M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v7A2.5 2.5 0 0 1 17.5 16h-7l-4 3v-3H6.5A2.5 2.5 0 0 1 4 13.5z" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            {user ? <span className="absolute -right-0.5 -top-0.5 rounded-full bg-[var(--brand)] px-1 text-[9px] font-bold text-white">1</span> : null}
+          </Link>
+
+          <button
+            type="button"
+            className="relative hidden sm:grid size-10 place-items-center rounded-full border border-[var(--line)] bg-white"
+            title="Notifications"
+          >
+            <svg viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor">
+              <path d="M12 4a4 4 0 0 0-4 4v2.4c0 .8-.2 1.5-.6 2.2L6 15h12l-1.4-2.4a4.4 4.4 0 0 1-.6-2.2V8a4 4 0 0 0-4-4Z" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+              <path d="M10 18a2 2 0 0 0 4 0" strokeWidth="1.6" strokeLinecap="round" />
+            </svg>
+          </button>
 
           <Link to="/cart" className="relative rounded-full border border-[var(--line)] bg-white px-3 py-2 text-xs font-semibold">
             {t(locale, 'cart')}
@@ -420,24 +559,86 @@ function Shell() {
           </Link>
 
           {user ? (
-            <div className="flex items-center gap-2">
-              <Link to="/profile" className="hidden rounded-full border border-[var(--line)] bg-white px-3 py-2 text-xs sm:block">
-                {user.name}
-              </Link>
-              {user.role === 'instructor' ? (
-                <Link to="/instructor/dashboard" className="hidden rounded-full border border-[var(--line)] bg-white px-3 py-2 text-xs lg:block">
-                  {t(locale, 'instructorDashboard')}
-                </Link>
-              ) : null}
-              {user.role === 'admin' ? (
-                <Link to="/admin" className="hidden rounded-full border border-[var(--line)] bg-white px-3 py-2 text-xs lg:block">
-                  {t(locale, 'admin')}
-                </Link>
-              ) : null}
-              <button onClick={() => void logout()} className="rounded-full border border-[var(--line)] bg-white px-3 py-2 text-xs">
-                Logout
-              </button>
-            </div>
+            <details className="relative">
+              <summary className="list-none cursor-pointer">
+                <div className="flex items-center gap-2 rounded-full border border-[var(--line)] bg-white px-2 py-1.5">
+                  <div className="grid size-8 place-items-center rounded-full bg-[#101218] text-xs font-bold text-white">
+                    {initials(user.name)}
+                  </div>
+                  <div className="hidden text-left sm:block">
+                    <p className="max-w-[120px] truncate text-xs font-semibold text-black">{user.name}</p>
+                    <p className="text-[10px] uppercase tracking-[0.14em] text-[var(--muted)]">{user.role}</p>
+                  </div>
+                  <span className="pr-1 text-xs text-[var(--muted)]">▾</span>
+                </div>
+              </summary>
+              <div className="absolute right-0 top-[calc(100%+10px)] w-[310px] overflow-hidden rounded-[18px] border border-[var(--line)] bg-white shadow-[0_30px_60px_-35px_rgba(0,0,0,0.45)]">
+                <div className="flex items-center gap-3 border-b border-[var(--line)] p-4">
+                  <div className="grid size-14 place-items-center rounded-full bg-[#101218] text-xl font-bold text-white">
+                    {initials(user.name)}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="truncate text-base font-semibold">{user.name}</p>
+                    <p className="truncate text-xs text-[var(--muted)]">{user.email}</p>
+                  </div>
+                </div>
+
+                <div className="p-2">
+                  <Link to="/profile" className="block rounded-[10px] px-3 py-2 text-sm hover:bg-[var(--paper-2)]">
+                    My dashboard
+                  </Link>
+                  {user.role === 'instructor' || user.role === 'admin' ? (
+                    <Link to="/instructor/dashboard" className="block rounded-[10px] px-3 py-2 text-sm hover:bg-[var(--paper-2)]">
+                      Instructor dashboard
+                    </Link>
+                  ) : null}
+                  {user.role === 'admin' ? (
+                    <Link to="/admin" className="block rounded-[10px] px-3 py-2 text-sm hover:bg-[var(--paper-2)]">
+                      Admin panel
+                    </Link>
+                  ) : null}
+                  <Link to="/messages" className="flex items-center justify-between rounded-[10px] px-3 py-2 text-sm hover:bg-[var(--paper-2)]">
+                    <span>Messages</span>
+                    <span className="rounded-full bg-[var(--brand)] px-2 py-0.5 text-[10px] font-semibold text-white">1</span>
+                  </Link>
+                  <Link to="/cart" className="block rounded-[10px] px-3 py-2 text-sm hover:bg-[var(--paper-2)]">
+                    My cart
+                  </Link>
+                </div>
+
+                <div className="border-y border-[var(--line)] p-2">
+                  <p className="px-3 py-1 text-[10px] font-semibold tracking-[0.16em] uppercase text-[var(--muted)]">Language</p>
+                  <div className="grid grid-cols-3 gap-2 px-2 pb-2">
+                    {[
+                      ['en', 'EN'],
+                      ['ka', 'KA'],
+                      ['ru', 'RU'],
+                    ].map(([code, label]) => (
+                      <button
+                        key={code}
+                        type="button"
+                        onClick={() => setLocale(code as ApiLocale)}
+                        className={`rounded-[10px] px-2 py-2 text-xs font-semibold ${locale === code ? 'bg-black text-white' : 'bg-[var(--paper-2)]'}`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="p-2">
+                  <Link to="/about" className="block rounded-[10px] px-3 py-2 text-sm hover:bg-[var(--paper-2)]">
+                    About us
+                  </Link>
+                  <button
+                    onClick={() => void logout()}
+                    className="block w-full rounded-[10px] px-3 py-2 text-left text-sm hover:bg-[var(--paper-2)]"
+                  >
+                    Logout
+                  </button>
+                </div>
+              </div>
+            </details>
           ) : (
             <Link to="/auth" className="rounded-full border border-[var(--line)] bg-white px-3 py-2 text-xs">
               {t(locale, 'auth')}
@@ -453,6 +654,7 @@ function Shell() {
         <Route path="/courses" element={<CoursesCatalogPage />} />
         <Route path="/courses/:slug" element={<CourseDetailPage />} />
         <Route path="/about" element={<AboutPage />} />
+        <Route path="/messages" element={<MessagesPage />} />
         <Route path="/auth" element={<AuthPage />} />
         <Route path="/profile" element={<UserProfilePage />} />
         <Route path="/instructor/dashboard" element={<InstructorDashboardPage />} />
@@ -478,7 +680,16 @@ function Footer() {
         </div>
         <FooterList title="Membership" items={['Access plans', 'Progress tracking', 'Bookmarks', 'Saved courses', 'Certificates']} />
         <FooterList title="Categories" items={['Marketing', 'Speaking', 'Design', 'Business', 'Lifestyle']} />
-        <FooterList title="Quick Access" items={['Courses', 'Instructors', 'About', 'Cart', 'Profile']} />
+        <div>
+          <p className="mb-3 text-[10px] font-semibold tracking-[0.16em] uppercase">Quick Access</p>
+          <div className="space-y-2 text-xs text-[var(--muted)]">
+            <Link to="/courses" className="block hover:text-black">Courses</Link>
+            <Link to="/instructors" className="block hover:text-black">Instructors</Link>
+            <Link to="/messages" className="block hover:text-black">Messages</Link>
+            <Link to="/about" className="block hover:text-black">About Us</Link>
+            <Link to="/cart" className="block hover:text-black">Cart</Link>
+          </div>
+        </div>
         <div className="space-y-3 text-xs text-[var(--muted)]">
           <div className="flex items-center justify-between">
             <span className="font-semibold uppercase tracking-[0.16em]">Contact</span>
@@ -2167,11 +2378,183 @@ function AuthPage() {
   )
 }
 
+function DashboardTabLink({
+  label,
+  active,
+  onClick,
+  badge,
+}: {
+  label: string
+  active: boolean
+  onClick: () => void
+  badge?: string | number
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex w-full items-center justify-between rounded-[12px] px-3 py-2.5 text-left text-sm font-medium ${
+        active ? 'bg-black text-white' : 'hover:bg-[var(--paper-2)]'
+      }`}
+    >
+      <span>{label}</span>
+      {badge !== undefined ? (
+        <span className={`rounded-full px-2 py-0.5 text-[10px] ${active ? 'bg-white/15' : 'bg-[var(--paper-2)]'}`}>{badge}</span>
+      ) : null}
+    </button>
+  )
+}
+
+function DashboardMetricCard({ label, value, hint }: { label: string; value: string | number; hint?: string }) {
+  return (
+    <div className="rounded-[14px] border border-[var(--line)] bg-white p-4">
+      <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--muted)]">{label}</p>
+      <p className="mt-2 text-2xl font-extrabold">{value}</p>
+      {hint ? <p className="mt-1 text-xs text-[var(--muted)]">{hint}</p> : null}
+    </div>
+  )
+}
+
+function MessageCenter({
+  role,
+  embedded = false,
+}: {
+  role: 'student' | 'instructor' | 'admin' | string
+  embedded?: boolean
+}) {
+  const threads = useMemo(() => getDemoThreads(role), [role])
+  const [selectedId, setSelectedId] = useState<string>(threads[0]?.id ?? '')
+  const [sortMode, setSortMode] = useState<'newest' | 'unread'>('newest')
+  const activeThread = threads.find((t) => t.id === selectedId) ?? threads[0]
+  const orderedThreads = [...threads].sort((a, b) => {
+    if (sortMode === 'unread') return (b.unread || 0) - (a.unread || 0)
+    return a.id < b.id ? 1 : -1
+  })
+
+  return (
+    <div className={`grid gap-4 ${embedded ? 'xl:grid-cols-[320px_1fr]' : 'lg:grid-cols-[340px_1fr]'}`}>
+      <div className="rounded-[16px] border border-[var(--line)] bg-white p-4">
+        <div className="mb-3 flex items-center justify-between gap-2">
+          <div>
+            <p className="text-xs font-semibold tracking-[0.16em] uppercase text-[var(--muted)]">Messages</p>
+            <h3 className="text-lg font-bold">Inbox</h3>
+          </div>
+          <select
+            value={sortMode}
+            onChange={(e) => setSortMode(e.target.value as 'newest' | 'unread')}
+            className="rounded-[10px] border border-[var(--line)] px-2 py-1 text-xs"
+          >
+            <option value="newest">Newest</option>
+            <option value="unread">Unread first</option>
+          </select>
+        </div>
+        <div className="space-y-2">
+          {orderedThreads.map((thread) => (
+            <button
+              key={thread.id}
+              type="button"
+              onClick={() => setSelectedId(thread.id)}
+              className={`w-full rounded-[12px] border p-3 text-left ${
+                activeThread?.id === thread.id ? 'border-black bg-[var(--paper-2)]' : 'border-[var(--line)] bg-white'
+              }`}
+            >
+              <div className="flex items-start justify-between gap-2">
+                <p className="text-sm font-semibold leading-tight">{thread.title}</p>
+                {thread.unread ? <span className="rounded-full bg-[var(--brand)] px-2 py-0.5 text-[10px] font-semibold text-white">{thread.unread}</span> : null}
+              </div>
+              <p className="mt-1 line-clamp-1 text-xs text-[var(--muted)]">{thread.course}</p>
+              <p className="mt-2 line-clamp-1 text-xs text-[var(--muted)]">{thread.participants.join(' · ')}</p>
+              <p className="mt-1 text-[11px] text-[var(--muted)]">{thread.updatedAt}</p>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="rounded-[16px] border border-[var(--line)] bg-white">
+        {activeThread ? (
+          <>
+            <div className="border-b border-[var(--line)] p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-lg font-bold">{activeThread.title}</p>
+                  <p className="mt-1 text-xs text-[var(--muted)]">{activeThread.course} · {activeThread.participants.join(' · ')}</p>
+                </div>
+                <div className="flex gap-2 text-xs">
+                  <button type="button" className="rounded-full border border-[var(--line)] px-3 py-2">Q&A</button>
+                  <button type="button" className="rounded-full border border-[var(--line)] px-3 py-2">Assignments</button>
+                  <button type="button" className="rounded-full border border-[var(--line)] px-3 py-2">Escalate to admin</button>
+                </div>
+              </div>
+            </div>
+            <div className="space-y-3 p-4">
+              {activeThread.messages.map((msg) => {
+                const isMe =
+                  (role === 'student' && msg.role === 'student') ||
+                  (role === 'instructor' && msg.role === 'instructor') ||
+                  (role === 'admin' && msg.role === 'admin')
+                return (
+                  <div key={msg.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
+                    <div className={`max-w-[85%] rounded-[14px] border px-3 py-2 ${isMe ? 'border-black bg-black text-white' : 'border-[var(--line)] bg-[var(--paper-2)]'}`}>
+                      <p className={`text-[11px] font-semibold uppercase tracking-[0.12em] ${isMe ? 'text-white/75' : 'text-[var(--muted)]'}`}>
+                        {msg.author} · {msg.role}
+                      </p>
+                      <p className="mt-1 text-sm leading-6">{msg.text}</p>
+                      <p className={`mt-1 text-[11px] ${isMe ? 'text-white/70' : 'text-[var(--muted)]'}`}>{msg.time}</p>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+            <div className="border-t border-[var(--line)] p-4">
+              <div className="rounded-[14px] border border-[var(--line)] bg-[var(--paper-2)] p-3">
+                <textarea
+                  rows={3}
+                  placeholder="Write a message (MVP UI; backend realtime/thread persistence next step)"
+                  className="w-full resize-none bg-transparent text-sm outline-none placeholder:text-[var(--muted)]"
+                />
+                <div className="mt-2 flex items-center justify-between gap-3">
+                  <div className="flex gap-2 text-xs">
+                    <button type="button" className="rounded-full border border-[var(--line)] bg-white px-3 py-2">Attach</button>
+                    <button type="button" className="rounded-full border border-[var(--line)] bg-white px-3 py-2">Homework</button>
+                  </div>
+                  <button type="button" className="rounded-full bg-black px-4 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-white">
+                    Send
+                  </button>
+                </div>
+              </div>
+            </div>
+          </>
+        ) : (
+          <div className="p-6 text-sm text-[var(--muted)]">No messages yet.</div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function MessagesPage() {
+  const { user } = useApp()
+  if (!user) return <GateCard title="Messages" text="Login first to open student/instructor/admin messages." />
+
+  return (
+    <>
+      <PageSection
+        title="Messages"
+        subtitle="Shared communication center for students, mentors and admins (Q&A, assignments, support)."
+      />
+      <MessageCenter role={user.role} />
+      <Footer />
+    </>
+  )
+}
+
 function UserProfilePage() {
   const { token, user, locale, setLocale } = useApp()
+  const [params, setParams] = useSearchParams()
   const [profile, setProfile] = useState<any>(null)
   const [form, setForm] = useState<any>({})
   const [message, setMessage] = useState<string | null>(null)
+  const activeTab = params.get('tab') || 'overview'
 
   useEffect(() => {
     if (!token) return
@@ -2188,69 +2571,282 @@ function UserProfilePage() {
   }, [token])
 
   if (!user) {
-    return <GateCard title="User Profile" text="Please login first to view your profile." />
+    return <GateCard title="User Dashboard" text="Please login first to view your dashboard." />
   }
 
   const orders = profile?.orders ?? []
+  const activeOrders = orders.filter((o: any) => o.enrollment_status === 'active')
+  const completedOrders = orders.filter((o: any) => o.enrollment_status === 'completed')
+  const totalSpent = orders.reduce((sum: number, o: any) => sum + Number(o.amount || 0), 0)
+  const dashboardTabs = [
+    { id: 'overview', label: 'Overview' },
+    { id: 'learning', label: 'My learning', badge: activeOrders.length },
+    { id: 'payments', label: 'Payments' },
+    { id: 'wishlist', label: 'Watch later', badge: 3 },
+    { id: 'messages', label: 'Messages', badge: 1 },
+    { id: 'settings', label: 'Settings' },
+  ]
 
   return (
     <>
-      <PageSection title={t(locale, 'profile')} subtitle="Client profile: purchases, payments, progress, and language settings." />
-      <div className="grid gap-6 lg:grid-cols-[0.95fr_1.05fr]">
-        <div className="rounded-[18px] border border-[var(--line)] bg-white p-5">
-          <h2 className="text-lg font-bold">Profile settings</h2>
-          <div className="mt-4 grid gap-3">
-            <input value={form.name ?? ''} onChange={(e) => setForm((f: any) => ({ ...f, name: e.target.value }))} placeholder="Name" className="rounded-xl border border-[var(--line)] px-4 py-3" />
-            <input value={form.phone ?? ''} onChange={(e) => setForm((f: any) => ({ ...f, phone: e.target.value }))} placeholder="Phone" className="rounded-xl border border-[var(--line)] px-4 py-3" />
-            <input value={form.headline ?? ''} onChange={(e) => setForm((f: any) => ({ ...f, headline: e.target.value }))} placeholder="Headline" className="rounded-xl border border-[var(--line)] px-4 py-3" />
-            <input value={form.avatar_url ?? ''} onChange={(e) => setForm((f: any) => ({ ...f, avatar_url: e.target.value }))} placeholder="Avatar URL" className="rounded-xl border border-[var(--line)] px-4 py-3" />
-            <select value={form.locale ?? locale} onChange={(e) => setForm((f: any) => ({ ...f, locale: e.target.value }))} className="rounded-xl border border-[var(--line)] px-4 py-3">
-              <option value="en">English</option>
-              <option value="ka">ქართული</option>
-              <option value="ru">Русский</option>
-            </select>
-            <button
-              onClick={async () => {
-                if (!token) return
-                try {
-                  const res = await api.updateMeProfile(form, token)
-                  setProfile(res.user)
-                  setLocale((res.user.locale || 'en') as ApiLocale)
-                  setMessage('Profile updated')
-                } catch (e: any) {
-                  setMessage(e.message)
-                }
-              }}
-              className="rounded-xl bg-black px-4 py-3 text-sm font-semibold text-white"
-            >
-              Save profile
-            </button>
-            {message ? <p className="text-sm text-[var(--muted)]">{message}</p> : null}
+      <PageSection title="Student Dashboard" subtitle="My learning, payments, reminders, messages and account settings." />
+      <div className="grid gap-6 xl:grid-cols-[290px_1fr]">
+        <aside className="space-y-4">
+          <div className="rounded-[18px] border border-[var(--line)] bg-white p-4">
+            <div className="flex items-center gap-3">
+              <div className="grid size-14 place-items-center rounded-full bg-[#101218] text-lg font-bold text-white">
+                {initials(user.name)}
+              </div>
+              <div className="min-w-0">
+                <p className="truncate text-base font-semibold">{user.name}</p>
+                <p className="truncate text-xs text-[var(--muted)]">{user.email}</p>
+                <p className="mt-1 text-[10px] uppercase tracking-[0.14em] text-[var(--muted)]">{user.role}</p>
+              </div>
+            </div>
+            <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
+              <div className="rounded-[10px] bg-[var(--paper-2)] p-3">
+                <p className="text-[var(--muted)]">Active</p>
+                <p className="mt-1 text-lg font-bold">{activeOrders.length}</p>
+              </div>
+              <div className="rounded-[10px] bg-[var(--paper-2)] p-3">
+                <p className="text-[var(--muted)]">Completed</p>
+                <p className="mt-1 text-lg font-bold">{completedOrders.length}</p>
+              </div>
+            </div>
           </div>
-        </div>
 
-        <div className="rounded-[18px] border border-[var(--line)] bg-white p-5">
-          <h2 className="text-lg font-bold">Purchased courses</h2>
-          <div className="mt-4 space-y-3">
-            {orders.length ? (
-              orders.map((order: any) => (
-                <div key={order.id} className="rounded-xl border border-[var(--line)] p-3">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-semibold">{textOf(order.course?.title, locale) || `Course #${order.course_id}`}</p>
-                      <p className="mt-1 text-xs text-[var(--muted)]">Payment: {order.payment_status} · Enrollment: {order.enrollment_status}</p>
+          <div className="rounded-[18px] border border-[var(--line)] bg-white p-3">
+            <p className="px-2 pb-2 text-[10px] font-semibold tracking-[0.16em] uppercase text-[var(--muted)]">Dashboard</p>
+            <div className="space-y-1">
+              {dashboardTabs.map((tab) => (
+                <DashboardTabLink
+                  key={tab.id}
+                  label={tab.label}
+                  badge={tab.badge}
+                  active={activeTab === tab.id}
+                  onClick={() => setParams((prev) => {
+                    const next = new URLSearchParams(prev)
+                    next.set('tab', tab.id)
+                    return next
+                  })}
+                />
+              ))}
+            </div>
+          </div>
+
+          <div className="rounded-[18px] border border-[var(--line)] bg-white p-4">
+            <p className="text-xs font-semibold tracking-[0.16em] uppercase">Upcoming</p>
+            <div className="mt-3 space-y-2 text-xs">
+              <div className="rounded-[10px] bg-[var(--paper-2)] p-3">Homework review pending · 1 item</div>
+              <div className="rounded-[10px] bg-[var(--paper-2)] p-3">Live webinar reminder · tomorrow 20:00</div>
+              <div className="rounded-[10px] bg-[var(--paper-2)] p-3">Payment receipt available · last order</div>
+            </div>
+          </div>
+        </aside>
+
+        <div className="space-y-5">
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <DashboardMetricCard label="Purchased" value={orders.length} hint="All enrolled products" />
+            <DashboardMetricCard label="In progress" value={activeOrders.length} hint="Continue where you stopped" />
+            <DashboardMetricCard label="Completed" value={completedOrders.length} hint="Certificates & history" />
+            <DashboardMetricCard label="Total spent" value={money(totalSpent, orders[0]?.currency || 'USD')} hint="All payments" />
+          </div>
+
+          {activeTab === 'overview' ? (
+            <div className="grid gap-5 xl:grid-cols-[1.1fr_0.9fr]">
+              <div className="rounded-[18px] border border-[var(--line)] bg-white p-5">
+                <div className="flex items-center justify-between gap-3">
+                  <h2 className="text-lg font-bold">Continue learning</h2>
+                  <button type="button" onClick={() => setParams({ tab: 'learning' })} className="text-xs font-semibold text-[var(--brand)]">
+                    View all
+                  </button>
+                </div>
+                <div className="mt-4 space-y-3">
+                  {(activeOrders.length ? activeOrders : orders).slice(0, 3).map((order: any) => (
+                    <div key={order.id} className="rounded-[14px] border border-[var(--line)] p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-semibold">{textOf(order.course?.title, locale) || `Course #${order.course_id}`}</p>
+                          <p className="mt-1 text-xs text-[var(--muted)]">
+                            {order.payment_status} · {order.enrollment_status}
+                          </p>
+                        </div>
+                        <Link to={`/courses/${order.course?.slug || ''}`} className="rounded-full border border-[var(--line)] px-3 py-1.5 text-[10px] font-semibold uppercase">
+                          Continue
+                        </Link>
+                      </div>
+                      <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100">
+                        <div className="h-full bg-[var(--brand)]" style={{ width: `${order.progress_percent ?? 0}%` }} />
+                      </div>
+                      <p className="mt-2 text-xs text-[var(--muted)]">{order.progress_percent ?? 0}% completed</p>
                     </div>
-                    <span className="text-sm font-semibold">{money(order.amount, order.currency || 'USD')}</span>
-                  </div>
-                  <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100">
-                    <div className="h-full bg-[var(--brand)]" style={{ width: `${order.progress_percent ?? 0}%` }} />
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-5">
+                <div className="rounded-[18px] border border-[var(--line)] bg-white p-5">
+                  <h2 className="text-lg font-bold">Reminders & tasks</h2>
+                  <div className="mt-4 space-y-2 text-sm">
+                    {[
+                      'Submit homework for Module 2 (due in 2 days)',
+                      'Webinar starts in 18 hours',
+                      'Review feedback from mentor available',
+                      'Resume lesson 03 where you stopped',
+                    ].map((item) => (
+                      <div key={item} className="rounded-[12px] bg-[var(--paper-2)] px-3 py-2">{item}</div>
+                    ))}
                   </div>
                 </div>
-              ))
-            ) : (
-              <p className="text-sm text-[var(--muted)]">No purchases yet.</p>
-            )}
-          </div>
+                <div className="rounded-[18px] border border-[var(--line)] bg-white p-5">
+                  <h2 className="text-lg font-bold">Folders (Watch later)</h2>
+                  <div className="mt-4 grid gap-2 text-sm">
+                    {['Healing Path', 'Retreats to decide', 'Webinars this month'].map((folder) => (
+                      <div key={folder} className="flex items-center justify-between rounded-[12px] border border-[var(--line)] px-3 py-2">
+                        <span>{folder}</span>
+                        <span className="text-xs text-[var(--muted)]">{Math.ceil(Math.random() * 4)} items</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          {activeTab === 'learning' ? (
+            <div className="rounded-[18px] border border-[var(--line)] bg-white p-5">
+              <h2 className="text-lg font-bold">My learning</h2>
+              <div className="mt-4 space-y-3">
+                {orders.length ? (
+                  orders.map((order: any, idx: number) => (
+                    <div key={order.id} className="rounded-[14px] border border-[var(--line)] p-4">
+                      <div className="flex flex-col gap-4 sm:flex-row">
+                        <img
+                          src={order.course?.cover_image_url || heroImages[idx % heroImages.length]}
+                          alt={textOf(order.course?.title, locale)}
+                          className="h-[110px] w-full rounded-[12px] object-cover sm:w-[170px]"
+                        />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div>
+                              <p className="text-base font-semibold">{textOf(order.course?.title, locale) || `Course #${order.course_id}`}</p>
+                              <p className="mt-1 text-xs text-[var(--muted)]">
+                                {order.course?.instructor?.name || 'Happytality'} · {order.enrollment_status}
+                              </p>
+                            </div>
+                            <span className="rounded-full bg-[var(--paper-2)] px-3 py-1 text-xs font-semibold">
+                              {order.progress_percent ?? 0}% done
+                            </span>
+                          </div>
+                          <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100">
+                            <div className="h-full bg-black" style={{ width: `${order.progress_percent ?? 0}%` }} />
+                          </div>
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            <Link to={`/courses/${order.course?.slug || ''}`} className="rounded-full bg-black px-4 py-2 text-xs font-semibold text-white">
+                              Continue course
+                            </Link>
+                            <button type="button" className="rounded-full border border-[var(--line)] px-4 py-2 text-xs font-semibold">
+                              Notes
+                            </button>
+                            <button type="button" className="rounded-full border border-[var(--line)] px-4 py-2 text-xs font-semibold">
+                              Remind me later
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-sm text-[var(--muted)]">No purchases yet.</p>
+                )}
+              </div>
+            </div>
+          ) : null}
+
+          {activeTab === 'payments' ? (
+            <div className="rounded-[18px] border border-[var(--line)] bg-white p-5">
+              <h2 className="text-lg font-bold">Payments & purchase history</h2>
+              <div className="mt-4 space-y-2">
+                {orders.length ? orders.map((order: any) => (
+                  <div key={order.id} className="grid gap-3 rounded-[12px] border border-[var(--line)] p-3 sm:grid-cols-[1fr_auto_auto] sm:items-center">
+                    <div>
+                      <p className="text-sm font-semibold">{textOf(order.course?.title, locale) || `Course #${order.course_id}`}</p>
+                      <p className="text-xs text-[var(--muted)]">Order #{order.order_number} · {order.payment_status}</p>
+                    </div>
+                    <span className="rounded-full bg-[var(--paper-2)] px-3 py-1 text-xs uppercase">{order.enrollment_status}</span>
+                    <span className="text-sm font-semibold">{money(order.amount, order.currency || 'USD')}</span>
+                  </div>
+                )) : <p className="text-sm text-[var(--muted)]">No payments yet.</p>}
+              </div>
+            </div>
+          ) : null}
+
+          {activeTab === 'wishlist' ? (
+            <div className="rounded-[18px] border border-[var(--line)] bg-white p-5">
+              <h2 className="text-lg font-bold">Watch later / remind me later</h2>
+              <div className="mt-4 grid gap-3 md:grid-cols-2">
+                {(fallbackCourses as any).concat((fallbackCourses as any)).slice(0, 4).map((course: any, idx: number) => (
+                  <div key={`${course.id}-${idx}`} className="overflow-hidden rounded-[14px] border border-[var(--line)]">
+                    <img src={course.cover_image_url || heroImages[idx % heroImages.length]} alt={textOf(course.title, locale)} className="h-[150px] w-full object-cover" />
+                    <div className="p-3">
+                      <p className="text-sm font-semibold">{textOf(course.title, locale)}</p>
+                      <p className="mt-1 text-xs text-[var(--muted)]">{course.instructor?.name} · {course.type}</p>
+                      <div className="mt-3 flex gap-2">
+                        <button type="button" className="rounded-full bg-black px-3 py-2 text-xs font-semibold text-white">Enroll now</button>
+                        <button type="button" className="rounded-full border border-[var(--line)] px-3 py-2 text-xs font-semibold">Folder</button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          {activeTab === 'messages' ? (
+            <div className="rounded-[18px] border border-[var(--line)] bg-white p-5">
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <h2 className="text-lg font-bold">Messages (Student · Mentor · Admin)</h2>
+                <Link to="/messages" className="rounded-full border border-[var(--line)] px-3 py-2 text-xs font-semibold">
+                  Open full inbox
+                </Link>
+              </div>
+              <MessageCenter role="student" embedded />
+            </div>
+          ) : null}
+
+          {activeTab === 'settings' ? (
+            <div className="rounded-[18px] border border-[var(--line)] bg-white p-5">
+              <h2 className="text-lg font-bold">Account settings</h2>
+              <div className="mt-4 grid gap-3 md:grid-cols-2">
+                <input value={form.name ?? ''} onChange={(e) => setForm((f: any) => ({ ...f, name: e.target.value }))} placeholder="Name" className="rounded-xl border border-[var(--line)] px-4 py-3" />
+                <input value={form.phone ?? ''} onChange={(e) => setForm((f: any) => ({ ...f, phone: e.target.value }))} placeholder="Phone" className="rounded-xl border border-[var(--line)] px-4 py-3" />
+                <input value={form.headline ?? ''} onChange={(e) => setForm((f: any) => ({ ...f, headline: e.target.value }))} placeholder="Headline" className="rounded-xl border border-[var(--line)] px-4 py-3 md:col-span-2" />
+                <input value={form.avatar_url ?? ''} onChange={(e) => setForm((f: any) => ({ ...f, avatar_url: e.target.value }))} placeholder="Avatar URL" className="rounded-xl border border-[var(--line)] px-4 py-3 md:col-span-2" />
+                <select value={form.locale ?? locale} onChange={(e) => setForm((f: any) => ({ ...f, locale: e.target.value }))} className="rounded-xl border border-[var(--line)] px-4 py-3">
+                  <option value="en">English</option>
+                  <option value="ka">ქართული</option>
+                  <option value="ru">Русский</option>
+                </select>
+                <button
+                  onClick={async () => {
+                    if (!token) return
+                    try {
+                      const res = await api.updateMeProfile(form, token)
+                      setProfile(res.user)
+                      setLocale((res.user.locale || 'en') as ApiLocale)
+                      setMessage('Profile updated')
+                    } catch (e: any) {
+                      setMessage(e.message)
+                    }
+                  }}
+                  className="rounded-xl bg-black px-4 py-3 text-sm font-semibold text-white"
+                >
+                  Save profile
+                </button>
+              </div>
+              {message ? <p className="mt-3 text-sm text-[var(--muted)]">{message}</p> : null}
+            </div>
+          ) : null}
         </div>
       </div>
       <Footer />
@@ -2260,17 +2856,22 @@ function UserProfilePage() {
 
 function InstructorDashboardPage() {
   const { token, user, locale } = useApp()
+  const [params, setParams] = useSearchParams()
   const [data, setData] = useState<any>(null)
   const [summary, setSummary] = useState<any>(null)
   const [newCourse, setNewCourse] = useState<any>({
     type: 'online',
+    category_slug: 'marketing',
     title_en: '',
     title_ka: '',
     title_ru: '',
     price_amount: '99',
     status: 'draft',
+    weekly_time: '2-4h',
   })
   const [message, setMessage] = useState<string | null>(null)
+  const [commTab, setCommTab] = useState<'qa' | 'messages' | 'announcements'>('messages')
+  const activeTab = params.get('tab') || 'overview'
 
   const canAccess = user && ['instructor', 'admin'].includes(user.role)
 
@@ -2286,140 +2887,424 @@ function InstructorDashboardPage() {
   if (!canAccess) return <GateCard title="Instructor Dashboard" text="You need instructor role to access this page." />
 
   const courses = data?.courses ?? []
+  const stats = summary?.summary ?? {}
+  const instructorTabs = [
+    { id: 'overview', label: 'Overview' },
+    { id: 'performance', label: 'Performance' },
+    { id: 'communication', label: 'Communication', badge: 1 },
+    { id: 'courses', label: 'Courses', badge: courses.length },
+    { id: 'create', label: 'Create course' },
+    { id: 'payouts', label: 'Payouts' },
+  ]
 
   return (
     <>
-      <PageSection title="Instructor Dashboard" subtitle="Manage your profile, courses, lessons, and sales overview." />
-      <div className="grid gap-6 lg:grid-cols-[1fr_1fr]">
-        <div className="space-y-5">
-          <div className="rounded-[18px] border border-[var(--line)] bg-white p-5">
-            <h2 className="text-lg font-bold">Analytics</h2>
-            <div className="mt-4 grid grid-cols-2 gap-3">
-              {[
-                ['Courses', summary?.summary?.courses_count ?? 0],
-                ['Students', summary?.summary?.students_count ?? 0],
-                ['Sales', summary?.summary?.sales_count ?? 0],
-                ['Revenue', summary?.summary?.gross_revenue ?? '0.00'],
-              ].map(([label, value]) => (
-                <div key={label} className="rounded-xl bg-[var(--paper-2)] p-3">
-                  <p className="text-xs text-[var(--muted)]">{label}</p>
-                  <p className="mt-1 text-lg font-bold">{String(value)}</p>
-                </div>
+      <PageSection title="Instructor Dashboard" subtitle="Performance, communication, course management and creation wizard." />
+      <div className="grid gap-6 xl:grid-cols-[88px_260px_1fr]">
+        <aside className="hidden xl:flex flex-col items-center gap-3 rounded-[20px] border border-[var(--line)] bg-[#11131a] py-4 text-white">
+          {['🏠', '📈', '💬', '🎬', '🛠', '❔'].map((icon, idx) => (
+            <button key={idx} type="button" className={`grid size-11 place-items-center rounded-[14px] text-base ${idx === 2 ? 'bg-[var(--brand)]' : 'bg-white/5 hover:bg-white/10'}`}>
+              <span aria-hidden>{icon}</span>
+            </button>
+          ))}
+        </aside>
+
+        <aside className="space-y-4">
+          <div className="rounded-[18px] border border-[var(--line)] bg-white p-4">
+            <p className="text-xl font-bold">Instructor</p>
+            <p className="mt-1 text-sm text-[var(--muted)]">{user.name}</p>
+            <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
+              <div className="rounded-[10px] bg-[var(--paper-2)] p-3">
+                <p className="text-[var(--muted)]">Courses</p>
+                <p className="mt-1 text-lg font-bold">{stats.courses_count ?? courses.length ?? 0}</p>
+              </div>
+              <div className="rounded-[10px] bg-[var(--paper-2)] p-3">
+                <p className="text-[var(--muted)]">Students</p>
+                <p className="mt-1 text-lg font-bold">{(stats.students_count ?? 0).toLocaleString?.() ?? stats.students_count ?? 0}</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-[18px] border border-[var(--line)] bg-white p-3">
+            <p className="px-2 pb-2 text-[10px] font-semibold tracking-[0.16em] uppercase text-[var(--muted)]">Workspace</p>
+            <div className="space-y-1">
+              {instructorTabs.map((tab) => (
+                <DashboardTabLink
+                  key={tab.id}
+                  label={tab.label}
+                  active={activeTab === tab.id}
+                  badge={tab.badge}
+                  onClick={() => setParams((prev) => {
+                    const next = new URLSearchParams(prev)
+                    next.set('tab', tab.id)
+                    return next
+                  })}
+                />
               ))}
             </div>
           </div>
 
-          <div className="rounded-[18px] border border-[var(--line)] bg-white p-5">
-            <h2 className="text-lg font-bold">Instructor profile</h2>
-            <p className="mt-2 text-sm text-[var(--muted)]">Update payment details, bio and promo media.</p>
-            <button
-              onClick={async () => {
-                if (!token) return
-                try {
-                  const res = await api.updateMeInstructorProfile(
-                    {
-                      display_name: user.name,
-                      bio: { en: 'Updated from dashboard', ka: 'განახლებულია დაფიდან', ru: 'Обновлено из кабинета' },
-                      payout_method: 'bank_transfer',
-                      payout_account: 'GE00TB1234567890000001',
-                    },
-                    token,
-                  )
-                  setMessage(res.message || 'Instructor profile updated')
-                } catch (e: any) {
-                  setMessage(e.message)
-                }
-              }}
-              className="mt-4 rounded-xl bg-black px-4 py-3 text-sm font-semibold text-white"
-            >
-              Quick update profile
-            </button>
-            {message ? <p className="mt-2 text-sm text-[var(--muted)]">{message}</p> : null}
+          <div className="rounded-[18px] border border-[var(--line)] bg-white p-4">
+            <p className="text-xs font-semibold tracking-[0.16em] uppercase">Course scope</p>
+            <select className="mt-3 w-full rounded-[12px] border border-[var(--line)] px-3 py-2 text-sm">
+              <option>All courses</option>
+              {courses.map((course: any) => (
+                <option key={course.id}>{textOf(course.title, locale)}</option>
+              ))}
+            </select>
           </div>
-        </div>
+        </aside>
 
         <div className="space-y-5">
           <div className="rounded-[18px] border border-[var(--line)] bg-white p-5">
-            <h2 className="text-lg font-bold">Create course</h2>
-            <div className="mt-4 grid gap-3">
-              <div className="grid gap-3 sm:grid-cols-2">
-                <input value={newCourse.title_en} onChange={(e) => setNewCourse((f: any) => ({ ...f, title_en: e.target.value }))} placeholder="Title (EN)" className="rounded-xl border border-[var(--line)] px-4 py-3" />
-                <input value={newCourse.title_ru} onChange={(e) => setNewCourse((f: any) => ({ ...f, title_ru: e.target.value }))} placeholder="Title (RU)" className="rounded-xl border border-[var(--line)] px-4 py-3" />
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 className="text-2xl font-extrabold">
+                  {activeTab === 'overview' && 'Overview'}
+                  {activeTab === 'performance' && 'Performance'}
+                  {activeTab === 'communication' && 'Communication'}
+                  {activeTab === 'courses' && 'Courses'}
+                  {activeTab === 'create' && 'Create Course'}
+                  {activeTab === 'payouts' && 'Payouts'}
+                </h2>
+                <p className="mt-1 text-sm text-[var(--muted)]">Dashboard layout for instructors with practical management tools.</p>
               </div>
-              <input value={newCourse.title_ka} onChange={(e) => setNewCourse((f: any) => ({ ...f, title_ka: e.target.value }))} placeholder="Title (KA)" className="rounded-xl border border-[var(--line)] px-4 py-3" />
-              <div className="grid gap-3 sm:grid-cols-3">
-                <select value={newCourse.type} onChange={(e) => setNewCourse((f: any) => ({ ...f, type: e.target.value }))} className="rounded-xl border border-[var(--line)] px-4 py-3">
-                  <option value="online">online</option>
-                  <option value="offline">offline</option>
-                </select>
-                <input value={newCourse.price_amount} onChange={(e) => setNewCourse((f: any) => ({ ...f, price_amount: e.target.value }))} placeholder="Price" className="rounded-xl border border-[var(--line)] px-4 py-3" />
-                <select value={newCourse.status} onChange={(e) => setNewCourse((f: any) => ({ ...f, status: e.target.value }))} className="rounded-xl border border-[var(--line)] px-4 py-3">
-                  <option value="draft">draft</option>
-                  <option value="published">published</option>
-                </select>
+              <div className="flex gap-2">
+                <button type="button" className="rounded-full border border-[var(--line)] px-4 py-2 text-xs font-semibold">Last 12 months</button>
+                <button type="button" className="rounded-full bg-black px-4 py-2 text-xs font-semibold text-white">Export</button>
               </div>
-              <button
-                onClick={async () => {
-                  if (!token) return
-                  try {
-                    const res = await api.createMyCourse(
-                      {
-                        type: newCourse.type,
-                        title: { en: newCourse.title_en, ka: newCourse.title_ka, ru: newCourse.title_ru },
-                        short_description: { en: 'Created from instructor dashboard', ka: 'შექმნილია კაბინეტიდან', ru: 'Создано из кабинета' },
-                        description: { en: 'Course description', ka: 'კურსის აღწერა', ru: 'Описание курса' },
-                        price_amount: Number(newCourse.price_amount || 0),
-                        currency: 'USD',
-                        status: newCourse.status,
-                        language_codes: ['en', 'ka', 'ru'],
-                      },
-                      token,
-                    )
-                    if (res.course?.id) {
-                      await api.createMyLesson(
-                        res.course.id,
-                        {
-                          title: { en: 'Lesson 1', ka: 'გაკვეთილი 1', ru: 'Урок 1' },
-                          description: { en: 'Intro lesson', ka: 'შესავალი', ru: 'Вводный урок' },
-                          is_preview: true,
-                        },
-                        token,
-                      )
-                    }
-                    const refreshed = await api.meInstructorProfile(token)
-                    setData(refreshed)
-                    setMessage('Course and first lesson created')
-                  } catch (e: any) {
-                    setMessage(e.message)
-                  }
-                }}
-                className="rounded-xl bg-black px-4 py-3 text-sm font-semibold text-white"
-              >
-                Create course
-              </button>
             </div>
           </div>
 
-          <div className="rounded-[18px] border border-[var(--line)] bg-white p-5">
-            <h2 className="text-lg font-bold">Your courses</h2>
-            <div className="mt-4 space-y-3">
-              {courses.length ? (
-                courses.map((course: any) => (
-                  <div key={course.id} className="rounded-xl border border-[var(--line)] p-3">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="text-sm font-semibold">{textOf(course.title, locale)}</p>
-                        <p className="mt-1 text-xs text-[var(--muted)]">{course.status} · {course.type} · {course.lessons_count ?? 0} lessons</p>
-                      </div>
-                      <span className="text-sm font-semibold">{money(course.sale_price_amount ?? course.price_amount, course.currency || 'USD')}</span>
+          {(activeTab === 'overview' || activeTab === 'performance') ? (
+            <>
+              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                <DashboardMetricCard label="Revenue" value={money(stats.gross_revenue, 'USD')} hint="Gross revenue" />
+                <DashboardMetricCard label="Enrollments" value={stats.sales_count ?? 0} hint="Paid enrollments" />
+                <DashboardMetricCard label="Students" value={(stats.students_count ?? 0).toLocaleString?.() ?? stats.students_count ?? 0} hint="Total clients" />
+                <DashboardMetricCard label="Refunds" value={stats.refunds_count ?? 0} hint="Cancelled/refunded" />
+              </div>
+
+              <div className="rounded-[18px] border border-[var(--line)] bg-white p-5">
+                <div className="mb-4 flex items-center justify-between gap-3">
+                  <h3 className="text-lg font-bold">Revenue / performance overview</h3>
+                  <select className="rounded-[10px] border border-[var(--line)] px-3 py-2 text-xs">
+                    <option>All courses</option>
+                    <option>Live only</option>
+                    <option>Recorded only</option>
+                  </select>
+                </div>
+                <div className="grid h-[260px] place-items-center rounded-[14px] border border-dashed border-[var(--line)] bg-[var(--paper-2)] text-center">
+                  <div>
+                    <p className="text-base font-semibold">Chart area (MVP)</p>
+                    <p className="mt-2 max-w-[520px] text-sm text-[var(--muted)]">
+                      Prepared for revenue, enrollments, completion rate, average rating, and cohort performance charts.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {activeTab === 'overview' ? (
+                <div className="grid gap-5 xl:grid-cols-[1.1fr_0.9fr]">
+                  <div className="rounded-[18px] border border-[var(--line)] bg-white p-5">
+                    <h3 className="text-lg font-bold">Recent courses</h3>
+                    <div className="mt-4 space-y-3">
+                      {courses.length ? courses.slice(0, 5).map((course: any) => (
+                        <div key={course.id} className="rounded-[14px] border border-[var(--line)] p-4">
+                          <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div>
+                              <p className="text-sm font-semibold">{textOf(course.title, locale)}</p>
+                              <p className="mt-1 text-xs text-[var(--muted)]">
+                                {course.status} · {course.type} · {course.lessons_count ?? 0} lessons
+                              </p>
+                            </div>
+                            <span className="text-sm font-semibold">{money(course.sale_price_amount ?? course.price_amount, course.currency || 'USD')}</span>
+                          </div>
+                          <div className="mt-3 flex gap-2">
+                            <Link to={`/courses/${course.slug}`} className="rounded-full border border-[var(--line)] px-3 py-1.5 text-[10px] font-semibold uppercase">Preview</Link>
+                            <button type="button" className="rounded-full border border-[var(--line)] px-3 py-1.5 text-[10px] font-semibold uppercase">Edit</button>
+                            <button type="button" onClick={() => setParams({ tab: 'communication' })} className="rounded-full border border-[var(--line)] px-3 py-1.5 text-[10px] font-semibold uppercase">Messages</button>
+                          </div>
+                        </div>
+                      )) : <p className="text-sm text-[var(--muted)]">No courses yet.</p>}
                     </div>
                   </div>
-                ))
-              ) : (
-                <p className="text-sm text-[var(--muted)]">No courses yet.</p>
-              )}
+
+                  <div className="space-y-5">
+                    <div className="rounded-[18px] border border-[var(--line)] bg-white p-5">
+                      <h3 className="text-lg font-bold">Communication snapshot</h3>
+                      <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
+                        <div className="rounded-[12px] bg-[var(--paper-2)] p-3"><p className="text-xs text-[var(--muted)]">Unread messages</p><p className="mt-1 text-xl font-bold">1</p></div>
+                        <div className="rounded-[12px] bg-[var(--paper-2)] p-3"><p className="text-xs text-[var(--muted)]">Q&A threads</p><p className="mt-1 text-xl font-bold">4</p></div>
+                        <div className="rounded-[12px] bg-[var(--paper-2)] p-3"><p className="text-xs text-[var(--muted)]">Homework to review</p><p className="mt-1 text-xl font-bold">2</p></div>
+                        <div className="rounded-[12px] bg-[var(--paper-2)] p-3"><p className="text-xs text-[var(--muted)]">Announcements draft</p><p className="mt-1 text-xl font-bold">1</p></div>
+                      </div>
+                    </div>
+                    <div className="rounded-[18px] border border-[var(--line)] bg-white p-5">
+                      <h3 className="text-lg font-bold">Payout settings</h3>
+                      <p className="mt-2 text-sm text-[var(--muted)]">Bank transfer, sales split, payout history, and withdrawal actions.</p>
+                      <button
+                        onClick={async () => {
+                          if (!token) return
+                          try {
+                            const res = await api.updateMeInstructorProfile(
+                              {
+                                display_name: user.name,
+                                bio: { en: 'Updated from dashboard', ka: 'განახლებულია დაფიდან', ru: 'Обновлено из кабинета' },
+                                payout_method: 'bank_transfer',
+                                payout_account: 'GE00TB1234567890000001',
+                              },
+                              token,
+                            )
+                            setMessage(res.message || 'Instructor profile updated')
+                          } catch (e: any) {
+                            setMessage(e.message)
+                          }
+                        }}
+                        className="mt-4 rounded-xl bg-black px-4 py-3 text-sm font-semibold text-white"
+                      >
+                        Quick update payout profile
+                      </button>
+                      {message ? <p className="mt-2 text-sm text-[var(--muted)]">{message}</p> : null}
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+            </>
+          ) : null}
+
+          {activeTab === 'communication' ? (
+            <div className="rounded-[18px] border border-[var(--line)] bg-white p-5">
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                <div className="flex gap-2">
+                  {[
+                    ['qa', 'Q&A'],
+                    ['messages', 'Messages'],
+                    ['announcements', 'Announcements'],
+                  ].map(([id, label]) => (
+                    <button
+                      key={id}
+                      type="button"
+                      onClick={() => setCommTab(id as 'qa' | 'messages' | 'announcements')}
+                      className={`rounded-full px-4 py-2 text-xs font-semibold uppercase tracking-[0.14em] ${
+                        commTab === id ? 'bg-black text-white' : 'border border-[var(--line)]'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                <div className="flex gap-2 text-xs">
+                  <button type="button" className="rounded-full border border-[var(--line)] px-3 py-2">Unread</button>
+                  <button type="button" className="rounded-full border border-[var(--line)] px-3 py-2">Newest first</button>
+                </div>
+              </div>
+
+              {commTab === 'messages' ? (
+                <MessageCenter role="instructor" embedded />
+              ) : null}
+
+              {commTab === 'qa' ? (
+                <div className="grid h-[360px] place-items-center rounded-[14px] border border-dashed border-[var(--line)] bg-[var(--paper-2)] text-center">
+                  <div>
+                    <p className="text-lg font-bold">Q&A threads</p>
+                    <p className="mt-2 text-sm text-[var(--muted)]">Student questions, instructor answers, admin moderation tools will appear here.</p>
+                  </div>
+                </div>
+              ) : null}
+
+              {commTab === 'announcements' ? (
+                <div className="space-y-4">
+                  <textarea rows={5} placeholder="Write announcement for enrolled students..." className="w-full rounded-[14px] border border-[var(--line)] bg-[var(--paper-2)] p-4 text-sm outline-none" />
+                  <div className="flex flex-wrap gap-2">
+                    <button type="button" className="rounded-full bg-black px-4 py-2 text-xs font-semibold text-white">Send to all students</button>
+                    <button type="button" className="rounded-full border border-[var(--line)] px-4 py-2 text-xs font-semibold">Save draft</button>
+                    <button type="button" className="rounded-full border border-[var(--line)] px-4 py-2 text-xs font-semibold">Schedule webinar reminder</button>
+                  </div>
+                </div>
+              ) : null}
             </div>
-          </div>
+          ) : null}
+
+          {activeTab === 'courses' ? (
+            <div className="rounded-[18px] border border-[var(--line)] bg-white p-5">
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <h3 className="text-lg font-bold">Your courses</h3>
+                <button type="button" onClick={() => setParams({ tab: 'create' })} className="rounded-full bg-black px-4 py-2 text-xs font-semibold text-white">
+                  Create new course
+                </button>
+              </div>
+              <div className="grid gap-4 md:grid-cols-2">
+                {courses.length ? courses.map((course: any, idx: number) => (
+                  <div key={course.id} className="overflow-hidden rounded-[14px] border border-[var(--line)]">
+                    <img src={course.cover_image_url || heroImages[idx % heroImages.length]} alt={textOf(course.title, locale)} className="h-[180px] w-full object-cover" />
+                    <div className="p-4">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="rounded-full bg-[var(--paper-2)] px-2 py-1 text-[10px] uppercase">{course.type}</span>
+                        <span className="text-xs text-[var(--muted)]">{course.status}</span>
+                      </div>
+                      <p className="mt-2 text-sm font-semibold">{textOf(course.title, locale)}</p>
+                      <p className="mt-1 text-xs text-[var(--muted)]">{course.lessons_count ?? 0} lessons · {course.duration_minutes ?? 0} min</p>
+                      <div className="mt-3 flex items-center justify-between">
+                        <span className="text-sm font-bold">{money(course.sale_price_amount ?? course.price_amount, course.currency || 'USD')}</span>
+                        <div className="flex gap-2">
+                          <Link to={`/courses/${course.slug}`} className="rounded-full border border-[var(--line)] px-3 py-1.5 text-[10px] font-semibold uppercase">Public page</Link>
+                          <button type="button" className="rounded-full border border-[var(--line)] px-3 py-1.5 text-[10px] font-semibold uppercase">Edit</button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )) : <p className="text-sm text-[var(--muted)]">No courses yet.</p>}
+              </div>
+            </div>
+          ) : null}
+
+          {activeTab === 'create' ? (
+            <div className="space-y-5">
+              <div className="rounded-[18px] border border-[var(--line)] bg-white p-5">
+                <h3 className="text-lg font-bold">Create course wizard (instructor onboarding style)</h3>
+                <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                  {[
+                    ['1', 'Type', newCourse.type || 'online'],
+                    ['2', 'Working title', newCourse.title_en || 'Untitled course'],
+                    ['3', 'Category', newCourse.category_slug],
+                    ['4', 'Weekly time', newCourse.weekly_time],
+                  ].map(([step, label, value]) => (
+                    <div key={step} className="rounded-[14px] border border-[var(--line)] bg-[var(--paper-2)] p-4">
+                      <p className="text-[10px] font-semibold tracking-[0.16em] uppercase text-[var(--muted)]">Step {step}</p>
+                      <p className="mt-2 text-sm font-semibold">{label}</p>
+                      <p className="mt-1 text-xs text-[var(--muted)]">{value}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="rounded-[18px] border border-[var(--line)] bg-white p-5">
+                <h3 className="text-lg font-bold">Course setup</h3>
+                <div className="mt-4 grid gap-3">
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="rounded-[14px] border border-[var(--line)] p-4">
+                      <p className="text-sm font-semibold">1. Choose course type</p>
+                      <div className="mt-3 grid grid-cols-2 gap-2">
+                        {['online', 'offline', 'live', 'recorded', 'webinar', 'retreat'].map((option) => (
+                          <button
+                            key={option}
+                            type="button"
+                            onClick={() => setNewCourse((f: any) => ({ ...f, type: option }))}
+                            className={`rounded-[10px] px-3 py-2 text-xs font-semibold uppercase ${newCourse.type === option ? 'bg-black text-white' : 'bg-[var(--paper-2)]'}`}
+                          >
+                            {option}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="rounded-[14px] border border-[var(--line)] p-4">
+                      <p className="text-sm font-semibold">2. Category + time</p>
+                      <select value={newCourse.category_slug} onChange={(e) => setNewCourse((f: any) => ({ ...f, category_slug: e.target.value }))} className="mt-3 w-full rounded-xl border border-[var(--line)] px-3 py-2 text-sm">
+                        {browseTopics.map((topic) => (
+                          <option key={topic.slug} value={topic.slug}>{topic.label}</option>
+                        ))}
+                      </select>
+                      <select value={newCourse.weekly_time} onChange={(e) => setNewCourse((f: any) => ({ ...f, weekly_time: e.target.value }))} className="mt-2 w-full rounded-xl border border-[var(--line)] px-3 py-2 text-sm">
+                        <option value="0-2h">0-2 hours / week</option>
+                        <option value="2-4h">2-4 hours / week</option>
+                        <option value="5h+">5+ hours / week</option>
+                        <option value="undecided">Undecided</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <input value={newCourse.title_en} onChange={(e) => setNewCourse((f: any) => ({ ...f, title_en: e.target.value }))} placeholder="Working title (EN)" className="rounded-xl border border-[var(--line)] px-4 py-3" />
+                    <input value={newCourse.title_ru} onChange={(e) => setNewCourse((f: any) => ({ ...f, title_ru: e.target.value }))} placeholder="Working title (RU)" className="rounded-xl border border-[var(--line)] px-4 py-3" />
+                  </div>
+                  <input value={newCourse.title_ka} onChange={(e) => setNewCourse((f: any) => ({ ...f, title_ka: e.target.value }))} placeholder="Working title (KA)" className="rounded-xl border border-[var(--line)] px-4 py-3" />
+
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <input value={newCourse.price_amount} onChange={(e) => setNewCourse((f: any) => ({ ...f, price_amount: e.target.value }))} placeholder="Price" className="rounded-xl border border-[var(--line)] px-4 py-3" />
+                    <select value={newCourse.status} onChange={(e) => setNewCourse((f: any) => ({ ...f, status: e.target.value }))} className="rounded-xl border border-[var(--line)] px-4 py-3">
+                      <option value="draft">draft</option>
+                      <option value="published">published</option>
+                    </select>
+                    <input placeholder="Trailer URL (optional)" className="rounded-xl border border-[var(--line)] px-4 py-3" />
+                  </div>
+
+                  <textarea rows={4} placeholder="Course overview, learning objectives, and format details..." className="rounded-xl border border-[var(--line)] px-4 py-3 text-sm outline-none" />
+
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      onClick={async () => {
+                        if (!token) return
+                        try {
+                          const selectedCategory = data?.categories?.find?.((c: any) => c.slug === newCourse.category_slug)
+                          const res = await api.createMyCourse(
+                            {
+                              type: newCourse.type,
+                              category_id: selectedCategory?.id,
+                              title: { en: newCourse.title_en, ka: newCourse.title_ka, ru: newCourse.title_ru },
+                              short_description: { en: 'Created from instructor dashboard', ka: 'შექმნილია კაბინეტიდან', ru: 'Создано из кабинета' },
+                              description: { en: 'Course description', ka: 'კურსის აღწერა', ru: 'Описание курса' },
+                              price_amount: Number(newCourse.price_amount || 0),
+                              currency: 'USD',
+                              status: newCourse.status,
+                              language_codes: ['en', 'ka', 'ru'],
+                            },
+                            token,
+                          )
+                          if (res.course?.id) {
+                            await api.createMyLesson(
+                              res.course.id,
+                              {
+                                title: { en: 'Lesson 1', ka: 'გაკვეთილი 1', ru: 'Урок 1' },
+                                description: { en: 'Intro lesson', ka: 'შესავალი', ru: 'Вводный урок' },
+                                is_preview: true,
+                              },
+                              token,
+                            )
+                          }
+                          const refreshed = await api.meInstructorProfile(token)
+                          setData(refreshed)
+                          setMessage('Course and first lesson created')
+                          setParams({ tab: 'courses' })
+                        } catch (e: any) {
+                          setMessage(e.message)
+                        }
+                      }}
+                      className="rounded-xl bg-black px-4 py-3 text-sm font-semibold text-white"
+                    >
+                      Create course
+                    </button>
+                    <button type="button" className="rounded-xl border border-[var(--line)] px-4 py-3 text-sm font-semibold">
+                      Save draft flow
+                    </button>
+                  </div>
+                  {message ? <p className="text-sm text-[var(--muted)]">{message}</p> : null}
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          {activeTab === 'payouts' ? (
+            <div className="grid gap-5 xl:grid-cols-[1fr_1fr]">
+              <div className="rounded-[18px] border border-[var(--line)] bg-white p-5">
+                <h3 className="text-lg font-bold">Payout account</h3>
+                <p className="mt-2 text-sm text-[var(--muted)]">Bank of Georgia payout integration will use this profile data and payout history view.</p>
+                <div className="mt-4 space-y-2 text-sm">
+                  <div className="rounded-[12px] bg-[var(--paper-2)] px-3 py-2">Method: Bank transfer</div>
+                  <div className="rounded-[12px] bg-[var(--paper-2)] px-3 py-2">Account: GE00TB1234567890000001</div>
+                  <div className="rounded-[12px] bg-[var(--paper-2)] px-3 py-2">Available balance: {money(stats.gross_revenue, 'USD')}</div>
+                </div>
+              </div>
+              <div className="rounded-[18px] border border-[var(--line)] bg-white p-5">
+                <h3 className="text-lg font-bold">Withdrawal actions</h3>
+                <div className="mt-4 space-y-3">
+                  <button type="button" className="w-full rounded-xl bg-black px-4 py-3 text-sm font-semibold text-white">Request payout</button>
+                  <button type="button" className="w-full rounded-xl border border-[var(--line)] px-4 py-3 text-sm font-semibold">Download revenue report</button>
+                  <button type="button" className="w-full rounded-xl border border-[var(--line)] px-4 py-3 text-sm font-semibold">Payment methods</button>
+                </div>
+              </div>
+            </div>
+          ) : null}
         </div>
       </div>
       <Footer />
