@@ -1,0 +1,38 @@
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Cormorant+Garamond:wght@500;600;700&display=swap');
+@import "tailwindcss";
+
+:root {
+  --paper: #eeece8;
+  --paper-2: #f5f4f1;
+  --ink: #121212;
+  --muted: #66635f;
+  --line: #dbd6cf;
+  --brand: #2f5d7f;
+  --brand-soft: #dfeaf1;
+  --accent: #f2b680;
+  --navy: #0f1720;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+html,
+body,
+#root {
+  min-width: 320px;
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  background: radial-gradient(circle at 15% 2%, #f8f7f4 0%, transparent 30%),
+    radial-gradient(circle at 90% 8%, #f2f7fb 0%, transparent 28%), var(--paper);
+  color: var(--ink);
+  font-family: 'Manrope', sans-serif;
+}
+
+.brand-script {
+  font-family: 'Cormorant Garamond', serif;
+  font-style: italic;
+}
