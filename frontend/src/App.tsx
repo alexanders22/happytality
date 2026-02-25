@@ -3,6 +3,7 @@ import type { FormEvent, ReactNode, RefObject } from 'react'
 import {
   BrowserRouter,
   Link,
+  Navigate,
   NavLink,
   Route,
   Routes,
@@ -270,6 +271,10 @@ function AppProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     localStorage.setItem('ht_locale', locale)
+  }, [locale])
+
+  useEffect(() => {
+    document.documentElement.lang = locale
   }, [locale])
 
   useEffect(() => {
@@ -640,7 +645,7 @@ function Shell() {
               </div>
             </details>
           ) : (
-            <Link to="/auth" className="rounded-full border border-[var(--line)] bg-white px-3 py-2 text-xs">
+            <Link to="/auth/login" className="rounded-full border border-[var(--line)] bg-white px-3 py-2 text-xs">
               {t(locale, 'auth')}
             </Link>
           )}
@@ -656,6 +661,8 @@ function Shell() {
         <Route path="/about" element={<AboutPage />} />
         <Route path="/messages" element={<MessagesPage />} />
         <Route path="/auth" element={<AuthPage />} />
+        <Route path="/auth/login" element={<LoginPage />} />
+        <Route path="/auth/register" element={<RegisterPage />} />
         <Route path="/profile" element={<UserProfilePage />} />
         <Route path="/instructor/dashboard" element={<InstructorDashboardPage />} />
         <Route path="/admin" element={<AdminPage />} />
@@ -2310,10 +2317,33 @@ function AboutPage() {
 }
 
 function AuthPage() {
+  return <Navigate to="/auth/login" replace />
+}
+
+function LoginPage() {
+  return <AuthScreen mode="login" />
+}
+
+function RegisterPage() {
+  return <AuthScreen mode="register" />
+}
+
+function GoogleMark() {
+  return (
+    <svg viewBox="0 0 24 24" className="size-4" aria-hidden="true">
+      <path fill="#EA4335" d="M12 10.2v3.9h5.5c-.24 1.25-.95 2.3-2.01 3.01l3.25 2.52C20.66 17.9 21.6 15.3 21.6 12c0-.6-.05-1.2-.16-1.8z" />
+      <path fill="#34A853" d="M12 21.6c2.97 0 5.47-.98 7.3-2.66l-3.25-2.52c-.9.6-2.04.96-4.05.96-3.11 0-5.74-2.1-6.68-4.92l-3.36 2.59A9.6 9.6 0 0 0 12 21.6" />
+      <path fill="#4A90E2" d="M5.32 12.46A5.76 5.76 0 0 1 5 10.8c0-.58.11-1.14.32-1.66L1.96 6.55A9.6 9.6 0 0 0 .4 10.8c0 1.54.37 2.99 1.03 4.25z" />
+      <path fill="#FBBC05" d="M12 4.22c1.61 0 3.05.55 4.19 1.62l3.15-3.15C17.46.95 14.96 0 12 0A9.6 9.6 0 0 0 1.96 6.55l3.36 2.59C6.26 6.31 8.89 4.22 12 4.22" />
+    </svg>
+  )
+}
+
+function AuthScreen({ mode }: { mode: 'login' | 'register' }) {
   const { login, register, authBusy, user, locale } = useApp()
   const navigate = useNavigate()
-  const [mode, setMode] = useState<'login' | 'register'>('login')
   const [error, setError] = useState<string | null>(null)
+  const [info, setInfo] = useState<string | null>(null)
   const [form, setForm] = useState({
     name: '',
     email: '',
@@ -2326,9 +2356,15 @@ function AuthPage() {
     if (user) navigate('/profile')
   }, [user, navigate])
 
+  useEffect(() => {
+    setError(null)
+    setInfo(null)
+  }, [mode])
+
   const submit = async (e: FormEvent) => {
     e.preventDefault()
     setError(null)
+    setInfo(null)
     try {
       if (mode === 'login') {
         await login(form.email, form.password)
@@ -2341,38 +2377,231 @@ function AuthPage() {
     }
   }
 
+  const isLogin = mode === 'login'
+
   return (
     <>
-      <PageSection title="Login / Register" subtitle="Register as user or instructor." />
-      <div className="mx-auto max-w-[720px] rounded-[18px] border border-[var(--line)] bg-white p-6">
-        <div className="mb-5 flex gap-2">
-          <button onClick={() => setMode('login')} className={`rounded-full px-4 py-2 text-sm ${mode === 'login' ? 'bg-black text-white' : 'bg-slate-100'}`}>Login</button>
-          <button onClick={() => setMode('register')} className={`rounded-full px-4 py-2 text-sm ${mode === 'register' ? 'bg-black text-white' : 'bg-slate-100'}`}>Register</button>
+      <section className="mt-8 grid min-h-[calc(100vh-180px)] gap-6 lg:grid-cols-[1.03fr_0.97fr]">
+        <div className="relative overflow-hidden rounded-[26px] border border-[var(--line)] bg-[#11131b] p-5 text-white sm:p-7">
+          <div className="absolute -left-12 top-8 h-40 w-40 rounded-full bg-[#2f5d7f]/45 blur-2xl" />
+          <div className="absolute -right-10 bottom-10 h-48 w-48 rounded-full bg-[#f2b680]/25 blur-2xl" />
+          <div className="relative z-10">
+            <div className="flex items-center justify-between gap-3">
+              <Link to="/" className="rounded-full border border-white/15 bg-white/5 px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em]">
+                Happytality
+              </Link>
+              <div className="rounded-full bg-white/10 px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.16em]">
+                {isLogin ? 'Member access' : 'Creator onboarding'}
+              </div>
+            </div>
+
+            <div className="mt-8 max-w-[520px]">
+              <p className="text-[10px] font-semibold tracking-[0.22em] text-white/70 uppercase">
+                Premium learning platform
+              </p>
+              <h1 className="mt-4 text-4xl leading-tight font-extrabold tracking-tight sm:text-5xl">
+                {isLogin ? 'Welcome back to your learning dashboard.' : 'Create your account and start building your course flow.'}
+              </h1>
+              <p className="mt-4 max-w-[480px] text-sm leading-7 text-white/75">
+                {isLogin
+                  ? 'Continue your courses, messages, homework reviews and payments from one place.'
+                  : 'Register as a student or instructor. Multilingual content, catalog, messaging and checkout are already wired in MVP form.'}
+              </p>
+            </div>
+
+            <div className="mt-8 grid gap-4 sm:grid-cols-2">
+              <div className="rounded-[18px] border border-white/10 bg-white/5 p-4 backdrop-blur">
+                <p className="text-[10px] tracking-[0.16em] uppercase text-white/70">Learning</p>
+                <p className="mt-2 text-2xl font-bold">58,340+</p>
+                <p className="mt-1 text-xs text-white/70">Learners across online, live and offline formats</p>
+              </div>
+              <div className="rounded-[18px] border border-white/10 bg-white/5 p-4 backdrop-blur">
+                <p className="text-[10px] tracking-[0.16em] uppercase text-white/70">Formats</p>
+                <p className="mt-2 text-2xl font-bold">6+</p>
+                <p className="mt-1 text-xs text-white/70">Recorded courses, live courses, webinars, retreats</p>
+              </div>
+            </div>
+
+            <div className="mt-8 grid gap-3 sm:grid-cols-[1.1fr_0.9fr]">
+              <div className="overflow-hidden rounded-[20px] border border-white/10 bg-white/5 p-3">
+                <img
+                  src={heroImages[0]}
+                  alt="Learning visual"
+                  className="h-[190px] w-full rounded-[14px] object-cover"
+                />
+                <div className="mt-3 rounded-[14px] border border-white/10 bg-black/20 p-3">
+                  <p className="text-sm font-semibold">Your workspace</p>
+                  <p className="mt-1 text-xs text-white/70">
+                    Dashboard, messages, payments, saved courses, reminders and progress tracking.
+                  </p>
+                </div>
+              </div>
+              <div className="space-y-3">
+                <div className="rounded-[20px] border border-white/10 bg-white/5 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-white/70">Roles</p>
+                  <div className="mt-3 space-y-2 text-sm">
+                    <div className="rounded-[10px] bg-white/10 px-3 py-2">Student dashboard</div>
+                    <div className="rounded-[10px] bg-white/10 px-3 py-2">Instructor dashboard</div>
+                    <div className="rounded-[10px] bg-white/10 px-3 py-2">Admin control panel</div>
+                  </div>
+                </div>
+                <div className="rounded-[20px] border border-white/10 bg-white/5 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-white/70">Demo accounts</p>
+                  <div className="mt-3 space-y-1 text-xs text-white/80">
+                    <p>admin@happytality.local</p>
+                    <p>instructor@happytality.local</p>
+                    <p>student@happytality.local</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
-        <form onSubmit={submit} className="grid gap-4 sm:grid-cols-2">
-          {mode === 'register' ? (
-            <input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} placeholder="Name" className="rounded-xl border border-[var(--line)] px-4 py-3" />
-          ) : null}
-          <input value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} placeholder="Email" className="rounded-xl border border-[var(--line)] px-4 py-3 sm:col-span-2" />
-          <input type="password" value={form.password} onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))} placeholder="Password" className="rounded-xl border border-[var(--line)] px-4 py-3" />
-          {mode === 'register' ? (
-            <>
-              <input type="password" value={form.password_confirmation} onChange={(e) => setForm((f) => ({ ...f, password_confirmation: e.target.value }))} placeholder="Confirm password" className="rounded-xl border border-[var(--line)] px-4 py-3" />
-              <select value={form.role} onChange={(e) => setForm((f) => ({ ...f, role: e.target.value }))} className="rounded-xl border border-[var(--line)] px-4 py-3 sm:col-span-2">
-                <option value="student">Student</option>
-                <option value="instructor">Instructor</option>
-              </select>
-            </>
-          ) : null}
-          {error ? <p className="sm:col-span-2 text-sm text-red-600">{error}</p> : null}
-          <button disabled={authBusy} className="sm:col-span-2 rounded-xl bg-black px-4 py-3 text-sm font-semibold text-white disabled:opacity-60">
-            {authBusy ? 'Please wait...' : mode === 'login' ? 'Login' : 'Create account'}
-          </button>
-        </form>
-        <div className="mt-5 text-xs text-[var(--muted)]">
-          Demo accounts: `admin@happytality.local`, `instructor@happytality.local`, `student@happytality.local`
+
+        <div className="relative">
+          <div className="rounded-[26px] border border-[var(--line)] bg-white p-5 shadow-[0_35px_70px_-45px_rgba(0,0,0,0.4)] sm:p-7">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-[10px] font-semibold tracking-[0.18em] text-[var(--muted)] uppercase">
+                  {isLogin ? 'Sign in' : 'Sign up'}
+                </p>
+                <h2 className="mt-2 text-3xl font-extrabold tracking-tight">
+                  {isLogin ? 'Login to Happytality' : 'Create your Happytality account'}
+                </h2>
+                <p className="mt-2 text-sm text-[var(--muted)]">
+                  {isLogin ? 'Access your dashboard and continue your learning.' : 'Choose a role and start using the platform.'}
+                </p>
+              </div>
+              <div className="hidden sm:flex rounded-full border border-[var(--line)] bg-[var(--paper-2)] p-1">
+                <Link
+                  to="/auth/login"
+                  className={`rounded-full px-3 py-2 text-xs font-semibold ${isLogin ? 'bg-black text-white' : ''}`}
+                >
+                  Login
+                </Link>
+                <Link
+                  to="/auth/register"
+                  className={`rounded-full px-3 py-2 text-xs font-semibold ${!isLogin ? 'bg-black text-white' : ''}`}
+                >
+                  Register
+                </Link>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                setError(null)
+                setInfo('Google sign-in UI is added. Backend OAuth redirect/callback endpoint is the next step.')
+              }}
+              className="mt-6 flex w-full items-center justify-center gap-2 rounded-[14px] border border-[var(--line)] bg-white px-4 py-3 text-sm font-semibold hover:bg-[var(--paper-2)]"
+            >
+              <GoogleMark />
+              {isLogin ? 'Continue with Google' : 'Sign up with Google'}
+            </button>
+
+            <div className="my-5 flex items-center gap-3">
+              <div className="h-px flex-1 bg-[var(--line)]" />
+              <span className="text-[10px] font-semibold tracking-[0.16em] text-[var(--muted)] uppercase">or</span>
+              <div className="h-px flex-1 bg-[var(--line)]" />
+            </div>
+
+            <form onSubmit={submit} className="grid gap-3 sm:grid-cols-2">
+              {!isLogin ? (
+                <input
+                  value={form.name}
+                  onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+                  placeholder="Full name"
+                  className="rounded-[14px] border border-[var(--line)] bg-[var(--paper-2)] px-4 py-3 text-sm outline-none focus:border-black"
+                />
+              ) : null}
+
+              <input
+                value={form.email}
+                onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
+                placeholder="Email address"
+                type="email"
+                className={`rounded-[14px] border border-[var(--line)] bg-[var(--paper-2)] px-4 py-3 text-sm outline-none focus:border-black ${isLogin ? 'sm:col-span-2' : ''}`}
+              />
+
+              <input
+                type="password"
+                value={form.password}
+                onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
+                placeholder="Password"
+                className="rounded-[14px] border border-[var(--line)] bg-[var(--paper-2)] px-4 py-3 text-sm outline-none focus:border-black"
+              />
+
+              {!isLogin ? (
+                <input
+                  type="password"
+                  value={form.password_confirmation}
+                  onChange={(e) => setForm((f) => ({ ...f, password_confirmation: e.target.value }))}
+                  placeholder="Confirm password"
+                  className="rounded-[14px] border border-[var(--line)] bg-[var(--paper-2)] px-4 py-3 text-sm outline-none focus:border-black"
+                />
+              ) : (
+                <button
+                  type="button"
+                  className="rounded-[14px] border border-[var(--line)] bg-white px-4 py-3 text-sm font-semibold hover:bg-[var(--paper-2)]"
+                >
+                  Forgot password
+                </button>
+              )}
+
+              {!isLogin ? (
+                <div className="sm:col-span-2 grid gap-3 sm:grid-cols-[1fr_1fr]">
+                  <select
+                    value={form.role}
+                    onChange={(e) => setForm((f) => ({ ...f, role: e.target.value }))}
+                    className="rounded-[14px] border border-[var(--line)] bg-[var(--paper-2)] px-4 py-3 text-sm outline-none focus:border-black"
+                  >
+                    <option value="student">Student</option>
+                    <option value="instructor">Instructor</option>
+                  </select>
+                  <div className="rounded-[14px] border border-[var(--line)] bg-[var(--paper-2)] px-4 py-3 text-sm text-[var(--muted)]">
+                    Language: {locale.toUpperCase()}
+                  </div>
+                </div>
+              ) : null}
+
+              {error ? <p className="sm:col-span-2 text-sm text-red-600">{error}</p> : null}
+              {info ? <p className="sm:col-span-2 text-sm text-[var(--muted)]">{info}</p> : null}
+
+              <button
+                disabled={authBusy}
+                className="sm:col-span-2 rounded-[14px] bg-black px-4 py-3 text-sm font-semibold text-white disabled:opacity-60"
+              >
+                {authBusy ? 'Please wait...' : isLogin ? 'Login' : 'Create account'}
+              </button>
+
+              <div className="sm:col-span-2 rounded-[14px] border border-[var(--line)] bg-[var(--paper-2)] px-4 py-3 text-xs text-[var(--muted)]">
+                {isLogin ? (
+                  <>
+                    New here?{' '}
+                    <Link to="/auth/register" className="font-semibold text-black underline">
+                      Create an account
+                    </Link>{' '}
+                    as student or instructor.
+                  </>
+                ) : (
+                  <>
+                    Already have an account?{' '}
+                    <Link to="/auth/login" className="font-semibold text-black underline">
+                      Login
+                    </Link>
+                    .
+                  </>
+                )}
+              </div>
+            </form>
+          </div>
+
+          <div className="mt-4 rounded-[18px] border border-[var(--line)] bg-white p-4 text-xs text-[var(--muted)]">
+            Demo password format is already seeded in the backend. Use the demo users from the left panel for quick testing.
+          </div>
         </div>
-      </div>
+      </section>
       <Footer />
     </>
   )
@@ -3631,7 +3860,7 @@ function CheckoutPage() {
 
   const createOrder = async () => {
     if (!token) {
-      navigate('/auth')
+      navigate('/auth/login')
       return
     }
     setBusy(true)
@@ -3699,7 +3928,7 @@ function GateCard({ title, text }: { title: string; text: string }) {
     <>
       <PageSection title={title} subtitle={text} />
       <div className="rounded-[18px] border border-[var(--line)] bg-white p-6 text-sm text-[var(--muted)]">
-        {text} <Link to="/auth" className="font-semibold text-black underline">Open auth page</Link>
+        {text} <Link to="/auth/login" className="font-semibold text-black underline">Open auth page</Link>
       </div>
       <Footer />
     </>
