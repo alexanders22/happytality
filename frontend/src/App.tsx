@@ -1,3 +1,11 @@
+import { startTransition, useEffect, useState } from 'react'
+import {
+  type ApiCourse,
+  type ApiInstructor,
+  fetchLandingBundle,
+  type LocalizedText,
+} from './lib/api'
+
 type MiniCard = {
   id: number
   name: string
@@ -17,7 +25,7 @@ type CourseCard = {
   badge?: string
 }
 
-const instructorCards: MiniCard[] = [
+const fallbackInstructorCards: MiniCard[] = [
   {
     id: 1,
     name: 'Mark Cuban',
@@ -74,7 +82,7 @@ const instructorCards: MiniCard[] = [
   },
 ]
 
-const courseCards: CourseCard[] = [
+const fallbackCourseCards: CourseCard[] = [
   {
     id: 1,
     title: 'Marketing That Converts',
@@ -135,7 +143,7 @@ const courseCards: CourseCard[] = [
   },
 ]
 
-const categories = [
+const fallbackCategories = [
   'Rhythm',
   'Voice',
   'Body',
@@ -168,7 +176,108 @@ function SectionLabel({ children }: { children: string }) {
   )
 }
 
+function localizedText(value: LocalizedText, locale = 'en') {
+  if (!value) {
+    return ''
+  }
+
+  if (typeof value === 'string') {
+    return value
+  }
+
+  return value[locale] || value.en || value.ru || value.ka || ''
+}
+
+function mapInstructorToCard(item: ApiInstructor, index: number): MiniCard {
+  const status = item.instructor_profile?.status
+  const students = item.instructor_profile?.total_students ?? 0
+  const firstCourse = item.courses?.[0]
+  const image =
+    item.avatar_url ||
+    firstCourse?.cover_image_url ||
+    fallbackInstructorCards[index % fallbackInstructorCards.length]?.image
+
+  return {
+    id: item.id,
+    name: item.name,
+    tag: status === 'approved' ? 'Top' : 'New',
+    role: item.headline || 'Instructor',
+    lessons: `${Math.max(1, Math.round(students / 1000) || 1)}k students`,
+    image,
+  }
+}
+
+function mapCourseToCard(item: ApiCourse, index: number): CourseCard {
+  const image = item.cover_image_url || fallbackCourseCards[index % fallbackCourseCards.length]?.image
+  const type = item.type === 'offline' ? 'Offline' : 'Online'
+  const lessonsCount = item.lessons_count ?? item.lessons_count_count ?? 0
+
+  return {
+    id: item.id,
+    title: localizedText(item.title) || 'Course',
+    author: item.instructor?.name || 'Happytality',
+    lessons: `${lessonsCount || 1} lessons`,
+    type,
+    image,
+    badge: index % 3 === 0 ? 'New' : undefined,
+  }
+}
+
 function App() {
+  const [apiMode, setApiMode] = useState<'loading' | 'ready' | 'fallback'>('loading')
+  const [learnersCount, setLearnersCount] = useState(58_340)
+  const [searchCoursesCount, setSearchCoursesCount] = useState(58_340)
+  const [categories, setCategories] = useState<string[]>(fallbackCategories)
+  const [instructorCards, setInstructorCards] = useState<MiniCard[]>(fallbackInstructorCards)
+  const [courseCards, setCourseCards] = useState<CourseCard[]>(fallbackCourseCards)
+
+  useEffect(() => {
+    let cancelled = false
+
+    const fillWithFallback = <T,>(primary: T[], fallback: T[], max = 6) => {
+      if (primary.length >= max) {
+        return primary.slice(0, max)
+      }
+
+      return [...primary, ...fallback.slice(0, Math.max(0, max - primary.length))].slice(0, max)
+    }
+
+    fetchLandingBundle()
+      .then((bundle) => {
+        if (cancelled) {
+          return
+        }
+
+        const apiInstructorCards = bundle.instructors.data.map(mapInstructorToCard)
+        const apiCourseCards = bundle.courses.data.map(mapCourseToCard)
+        const apiCategories = bundle.landing.categories
+          .map((category) => localizedText(category.name))
+          .filter(Boolean)
+
+        startTransition(() => {
+          setLearnersCount(bundle.landing.stats.learners_count || 58_340)
+          setSearchCoursesCount(bundle.landing.stats.courses_count || 58_340)
+          setCategories(
+            [...new Set([...apiCategories, ...fallbackCategories])].slice(0, 12)
+          )
+          setInstructorCards(fillWithFallback(apiInstructorCards, fallbackInstructorCards))
+          setCourseCards(fillWithFallback(apiCourseCards, fallbackCourseCards))
+          setApiMode('ready')
+        })
+      })
+      .catch(() => {
+        if (cancelled) {
+          return
+        }
+
+        setApiMode('fallback')
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   return (
     <main className="mx-auto max-w-[1280px] px-4 pb-12 pt-5 sm:px-6 lg:px-10">
       <header className="flex items-center justify-between gap-4 rounded-full border border-[var(--line)] bg-white/70 px-5 py-3 backdrop-blur-sm">
@@ -192,6 +301,17 @@ function App() {
             <a href="#about" className="hover:text-black">
               About Us
             </a>
+            <span
+              className={`rounded-full px-2 py-1 text-[9px] font-semibold tracking-[0.14em] uppercase ${
+                apiMode === 'ready'
+                  ? 'bg-emerald-50 text-emerald-700'
+                  : apiMode === 'loading'
+                    ? 'bg-amber-50 text-amber-700'
+                    : 'bg-slate-100 text-slate-700'
+              }`}
+            >
+              API {apiMode}
+            </span>
           </nav>
         </div>
         <div className="flex items-center gap-3">
@@ -279,7 +399,9 @@ function App() {
               ))}
             </div>
             <p className="text-xs text-[var(--muted)]">
-              Join <span className="font-semibold text-black">58,340</span> learners worldwide
+              Join{' '}
+              <span className="font-semibold text-black">{learnersCount.toLocaleString()}</span>{' '}
+              learners worldwide
             </p>
           </div>
         </div>
@@ -512,8 +634,9 @@ function App() {
 
       <section className="mt-16 text-center">
         <h2 className="mx-auto max-w-[640px] text-3xl leading-tight font-extrabold sm:text-4xl">
-          Search among <span className="text-[var(--brand)]">58,340</span> courses and find your
-          favorite course
+          Search among{' '}
+          <span className="text-[var(--brand)]">{searchCoursesCount.toLocaleString()}</span>{' '}
+          courses and find your favorite course
         </h2>
 
         <div className="mx-auto mt-8 flex max-w-[760px] flex-col items-stretch gap-3 sm:flex-row">
