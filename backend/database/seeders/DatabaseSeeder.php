@@ -33,6 +33,20 @@ class DatabaseSeeder extends Seeder
             'password' => 'Admin12345!',
         ]);
 
+        $alexSuperAdmin = User::firstOrNew([
+            'email' => 'alexander22122@gmail.com',
+        ]);
+        if (! $alexSuperAdmin->exists) {
+            $alexSuperAdmin->password = 'Admin12345!';
+        }
+        $alexSuperAdmin->fill([
+            'name' => $alexSuperAdmin->name ?: 'Alexander Super Admin',
+            'role' => 'admin',
+            'locale' => $alexSuperAdmin->locale ?: 'en',
+            'headline' => 'Happytality Super Admin',
+        ]);
+        $alexSuperAdmin->save();
+
         $instructor = User::updateOrCreate([
             'email' => 'instructor@happytality.local',
         ], [

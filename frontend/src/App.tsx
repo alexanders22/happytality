@@ -11,7 +11,19 @@ import {
   useParams,
   useSearchParams,
 } from 'react-router-dom'
-import { api, type ApiCourse, type ApiInstructor, type ApiLocale, type ApiUser, localized } from './lib/api'
+import {
+  ArcElement,
+  BarElement,
+  CategoryScale,
+  Chart as ChartJS,
+  Legend,
+  LinearScale,
+  LineElement,
+  PointElement,
+  Tooltip,
+} from 'chart.js'
+import { Bar, Doughnut, Line } from 'react-chartjs-2'
+import { api, type ApiCourse, type ApiInstructor, type ApiLessonProgressItem, type ApiLocale, type ApiUser, localized } from './lib/api'
 
 type CartState = Awaited<ReturnType<typeof api.cart>> | null
 type ThemeMode = 'light' | 'dark'
@@ -38,6 +50,8 @@ type AppContextValue = {
 }
 
 const AppContext = createContext<AppContextValue | null>(null)
+
+ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, ArcElement, Tooltip, Legend)
 
 function useApp() {
   const ctx = useContext(AppContext)
@@ -523,23 +537,70 @@ function Shell() {
   const { locale, setLocale, theme, setTheme, cart, user, logout } = useApp()
   const navigate = useNavigate()
   const [q, setQ] = useState('')
+  const browseDetailsRef = useRef<HTMLDetailsElement | null>(null)
+  const profileDetailsRef = useRef<HTMLDetailsElement | null>(null)
+  const isDark = theme === 'dark'
+  const headerControl = isDark ? 'border border-white/15 bg-white/5 text-white' : 'border border-[var(--line)] bg-white'
+  const headerGhostControl = isDark ? 'border border-white/15 bg-transparent text-white' : 'border border-[var(--line)] bg-white'
+  const headerMutedText = isDark ? 'text-white/70' : 'text-[var(--muted)]'
+
+  useEffect(() => {
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target as Node | null
+      if (!target) return
+
+      for (const ref of [browseDetailsRef, profileDetailsRef]) {
+        const el = ref.current
+        if (!el?.open) continue
+        if (el.contains(target)) continue
+        el.open = false
+      }
+    }
+
+    document.addEventListener('pointerdown', onPointerDown)
+    return () => document.removeEventListener('pointerdown', onPointerDown)
+  }, [])
 
   return (
     <PageContainer>
-      <header className="sticky top-3 z-30 flex items-center justify-between gap-4 rounded-full border border-[var(--line)] bg-white/85 px-4 py-3 backdrop-blur-sm sm:px-5">
+      <header
+        className={`sticky top-3 z-30 flex items-center justify-between gap-4 rounded-full px-4 py-3 sm:px-5 ${
+          isDark
+            ? 'border border-white/10 bg-[#0b1018]/70 shadow-[0_18px_40px_-28px_rgba(0,0,0,0.75)] backdrop-blur-xl'
+            : 'border border-[var(--line)] bg-white/85 backdrop-blur-sm'
+        }`}
+      >
         <div className="flex min-w-0 items-center gap-3 sm:gap-5">
           <Link to="/" className="leading-none w-[100px]">
-            <img src="/logo.svg" alt="logo" className="w-auto h-auto" />
+            <img
+              src={isDark ? '/logo-white.svg' : '/logo.svg'}
+              alt="logo"
+              className="h-auto w-auto object-contain"
+              onError={(e) => {
+                const img = e.currentTarget
+                if (img.dataset.fallbackApplied === '1') return
+                img.dataset.fallbackApplied = '1'
+                img.src = '/logo.svg'
+              }}
+            />
           </Link>
 
-          <details className="relative hidden md:block">
-            <summary className="list-none cursor-pointer rounded-full border border-[var(--line)] bg-white px-3 py-2 text-xs font-semibold">
+          <details ref={browseDetailsRef} className="relative hidden md:block">
+            <summary
+              className={`list-none cursor-pointer rounded-full px-3 py-2 text-xs font-semibold ${
+                isDark ? 'border border-white/15 bg-white/5 text-white' : 'border border-[var(--line)] bg-white'
+              }`}
+            >
               Browse
             </summary>
-            <div className="absolute left-0 top-[calc(100%+10px)] w-[720px] rounded-[18px] border border-[var(--line)] bg-white p-4 shadow-[0_30px_60px_-35px_rgba(0,0,0,0.45)]">
+            <div
+              className={`absolute left-0 top-[calc(100%+10px)] w-[720px] rounded-[18px] p-4 shadow-[0_30px_60px_-35px_rgba(0,0,0,0.45)] ${
+                isDark ? 'border border-white/10 bg-[#0c111a]/95 text-white backdrop-blur-xl' : 'border border-[var(--line)] bg-white'
+              }`}
+            >
               <div className="grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
-                <div className="rounded-[14px] border border-[var(--line)] bg-[var(--paper-2)] p-4">
-                  <p className="text-[10px] font-semibold tracking-[0.16em] uppercase text-[var(--muted)]">Explore by goal</p>
+                <div className={`rounded-[14px] p-4 ${isDark ? 'border border-white/10 bg-white/5' : 'border border-[var(--line)] bg-[var(--paper-2)]'}`}>
+                  <p className={`text-[10px] font-semibold tracking-[0.16em] uppercase ${headerMutedText}`}>Explore by goal</p>
                   <div className="mt-3 space-y-2">
                     {[
                       ['Learn AI', '/courses?q=ai'],
@@ -547,21 +608,31 @@ function Shell() {
                       ['Prepare for certification', '/courses?category=webinars'],
                       ['Practice with role play', '/courses?category=live-courses'],
                     ].map(([label, href]) => (
-                      <Link key={label} to={href} className="flex items-center justify-between rounded-[10px] bg-white px-3 py-2 text-sm hover:border-black">
+                      <Link
+                        key={label}
+                        to={href}
+                        className={`flex items-center justify-between rounded-[10px] px-3 py-2 text-sm ${
+                          isDark ? 'bg-white/5 hover:bg-white/10' : 'bg-white hover:border-black'
+                        }`}
+                      >
                         <span>{label}</span>
-                        <span className="text-[var(--muted)]">›</span>
+                        <span className={headerMutedText}>›</span>
                       </Link>
                     ))}
                   </div>
                 </div>
                 <div>
-                  <p className="text-[10px] font-semibold tracking-[0.16em] uppercase text-[var(--muted)]">Categories</p>
+                  <p className={`text-[10px] font-semibold tracking-[0.16em] uppercase ${headerMutedText}`}>Categories</p>
                   <div className="mt-3 grid grid-cols-2 gap-2">
                     {browseTopics.map((topic) => (
                       <Link
                         key={topic.slug}
                         to={`/courses?category=${encodeURIComponent(topic.slug)}`}
-                        className="rounded-[10px] border border-[var(--line)] px-3 py-2 text-sm hover:border-black hover:bg-[var(--paper-2)]"
+                        className={`rounded-[10px] px-3 py-2 text-sm ${
+                          isDark
+                            ? 'border border-white/10 bg-white/5 hover:border-white/20 hover:bg-white/10'
+                            : 'border border-[var(--line)] hover:border-black hover:bg-[var(--paper-2)]'
+                        }`}
                       >
                         {topic.label}
                       </Link>
@@ -572,14 +643,20 @@ function Shell() {
             </div>
           </details>
 
-          <nav className="hidden items-center gap-4 text-sm text-[var(--muted)] md:flex">
-            <NavLink to="/" className={({ isActive }) => (isActive ? 'text-black' : 'hover:text-black')} end>
+          <nav className={`hidden items-center gap-4 text-sm md:flex ${isDark ? 'text-white/65' : 'text-[var(--muted)]'}`}>
+            <NavLink to="/" className={({ isActive }) => (isActive ? (isDark ? 'text-white' : 'text-black') : isDark ? 'hover:text-white' : 'hover:text-black')} end>
               {t(locale, 'home')}
             </NavLink>
-            <NavLink to="/instructors" className={({ isActive }) => (isActive ? 'text-black' : 'hover:text-black')}>
+            <NavLink
+              to="/instructors"
+              className={({ isActive }) => (isActive ? (isDark ? 'text-white' : 'text-black') : isDark ? 'hover:text-white' : 'hover:text-black')}
+            >
               {t(locale, 'instructors')}
             </NavLink>
-            <NavLink to="/courses" className={({ isActive }) => (isActive ? 'text-black' : 'hover:text-black')}>
+            <NavLink
+              to="/courses"
+              className={({ isActive }) => (isActive ? (isDark ? 'text-white' : 'text-black') : isDark ? 'hover:text-white' : 'hover:text-black')}
+            >
               {t(locale, 'courses')}
             </NavLink>
           </nav>
@@ -587,13 +664,13 @@ function Shell() {
 
         <div className="flex items-center gap-2 sm:gap-3">
           <form
-            className="hidden items-center gap-2 rounded-full border border-[var(--line)] bg-white px-3 py-2 lg:flex"
+            className={`hidden items-center gap-2 rounded-full px-3 py-2 lg:flex ${headerControl}`}
             onSubmit={(e) => {
               e.preventDefault()
               navigate(`/courses?q=${encodeURIComponent(q)}`)
             }}
           >
-            <svg viewBox="0 0 24 24" className="size-4 text-[#777]" fill="none" stroke="currentColor">
+            <svg viewBox="0 0 24 24" className={`size-4 ${isDark ? 'text-white/60' : 'text-[#777]'}`} fill="none" stroke="currentColor">
               <path d="M21 21l-4.3-4.3" strokeWidth="1.8" strokeLinecap="round" />
               <circle cx="11" cy="11" r="6.5" strokeWidth="1.6" />
             </svg>
@@ -601,34 +678,38 @@ function Shell() {
               value={q}
               onChange={(e) => setQ(e.target.value)}
               placeholder={t(locale, 'searchCourses')}
-              className="w-[180px] bg-transparent text-xs outline-none placeholder:text-[#888]"
+              className={`w-[180px] bg-transparent text-xs outline-none ${isDark ? 'text-white placeholder:text-white/35' : 'placeholder:text-[#888]'}`}
             />
           </form>
 
-          <select
-            value={locale}
-            onChange={(e) => setLocale(e.target.value as ApiLocale)}
-            className="rounded-full border border-[var(--line)] bg-white px-2 py-2 text-xs hidden sm:block"
-          >
-            <option value="en">EN</option>
-            <option value="ka">KA</option>
-            <option value="ru">RU</option>
-          </select>
+          {!user ? (
+            <select
+              value={locale}
+              onChange={(e) => setLocale(e.target.value as ApiLocale)}
+              className={`rounded-full px-2 py-2 text-xs hidden sm:block ${headerControl}`}
+            >
+              <option value="en">EN</option>
+              <option value="ka">KA</option>
+              <option value="ru">RU</option>
+            </select>
+          ) : null}
 
-          <Link
-            to="/messages"
-            className="relative hidden sm:grid size-10 place-items-center rounded-full border border-[var(--line)] bg-white"
-            title="Messages"
-          >
-            <svg viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor">
-              <path d="M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v7A2.5 2.5 0 0 1 17.5 16h-7l-4 3v-3H6.5A2.5 2.5 0 0 1 4 13.5z" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-            {user ? <span className="absolute -right-0.5 -top-0.5 rounded-full bg-[var(--brand)] px-1 text-[9px] font-bold text-white">1</span> : null}
-          </Link>
+          {user ? (
+            <Link
+              to="/messages"
+              className={`relative hidden sm:grid size-10 place-items-center rounded-full ${headerControl}`}
+              title="Messages"
+            >
+              <svg viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor">
+                <path d="M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v7A2.5 2.5 0 0 1 17.5 16h-7l-4 3v-3H6.5A2.5 2.5 0 0 1 4 13.5z" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              <span className="absolute -right-0.5 -top-0.5 rounded-full bg-[var(--brand)] px-1 text-[9px] font-bold text-white">1</span>
+            </Link>
+          ) : null}
 
           <button
             type="button"
-            className="relative hidden sm:grid size-10 place-items-center rounded-full border border-[var(--line)] bg-white"
+            className={`relative hidden sm:grid size-10 place-items-center rounded-full ${headerControl}`}
             title="Notifications"
           >
             <svg viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor">
@@ -640,41 +721,58 @@ function Shell() {
           <button
             type="button"
             onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-            className="grid size-10 place-items-center rounded-full border border-[var(--line)] bg-white"
+            className={`grid size-10 place-items-center rounded-full ${headerControl}`}
             title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
           >
             {theme === 'dark' ? '☀' : '☾'}
           </button>
 
-          <Link to="/cart" className="relative rounded-full border border-[var(--line)] bg-white px-3 py-2 text-xs font-semibold">
-            {t(locale, 'cart')}
-            <span className="ml-2 rounded-full bg-black px-2 py-0.5 text-[10px] text-white">
+          <Link
+            to="/cart"
+            className={`relative grid size-10 place-items-center rounded-full ${headerControl}`}
+            title={t(locale, 'cart')}
+            aria-label={t(locale, 'cart')}
+          >
+            <svg viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor">
+              <path d="M4 6h1.6l1.1 7.2a1.5 1.5 0 0 0 1.48 1.28h7.68a1.5 1.5 0 0 0 1.47-1.2L19 8H7" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+              <circle cx="10" cy="18" r="1.2" fill="currentColor" stroke="none" />
+              <circle cx="17" cy="18" r="1.2" fill="currentColor" stroke="none" />
+            </svg>
+            <span
+              className={`absolute -right-1 -top-1 rounded-full px-1.5 py-0.5 text-[9px] font-bold leading-none ${
+                isDark ? 'bg-white text-black' : 'bg-black text-white'
+              }`}
+            >
               {cart?.summary?.items_count ?? 0}
             </span>
           </Link>
 
           {user ? (
-            <details className="relative">
+            <details ref={profileDetailsRef} className="relative">
               <summary className="list-none cursor-pointer">
-                <div className="flex items-center gap-2 rounded-full border border-[var(--line)] bg-white px-2 py-1.5">
-                  <div className="grid size-8 place-items-center rounded-full bg-[#101218] text-xs font-bold text-white">
+                <div className={`flex items-center gap-2 rounded-full px-2 py-1.5 ${headerControl}`}>
+                  <div className={`grid size-8 place-items-center rounded-full text-xs font-bold ${isDark ? 'bg-white/10 text-white border border-white/15' : 'bg-[#101218] text-white'}`}>
                     {initials(user.name)}
                   </div>
                   <div className="hidden text-left sm:block">
-                    <p className="max-w-[120px] truncate text-xs font-semibold text-black">{user.name}</p>
-                    <p className="text-[10px] uppercase tracking-[0.14em] text-[var(--muted)]">{user.role}</p>
+                    <p className={`max-w-[120px] truncate text-xs font-semibold ${isDark ? 'text-white' : 'text-black'}`}>{user.name}</p>
+                    <p className={`text-[10px] uppercase tracking-[0.14em] ${headerMutedText}`}>{user.role}</p>
                   </div>
-                  <span className="pr-1 text-xs text-[var(--muted)]">▾</span>
+                  <span className={`pr-1 text-xs ${headerMutedText}`}>▾</span>
                 </div>
               </summary>
-              <div className="absolute right-0 top-[calc(100%+10px)] w-[310px] overflow-hidden rounded-[18px] border border-[var(--line)] bg-white shadow-[0_30px_60px_-35px_rgba(0,0,0,0.45)]">
+              <div
+                className={`absolute right-0 top-[calc(100%+10px)] w-[310px] overflow-hidden rounded-[18px] shadow-[0_30px_60px_-35px_rgba(0,0,0,0.45)] ${
+                  isDark ? 'border border-white/10 bg-[#0c111a]/95 text-white backdrop-blur-xl' : 'border border-[var(--line)] bg-white'
+                }`}
+              >
                 <div className="flex items-center gap-3 border-b border-[var(--line)] p-4">
-                  <div className="grid size-14 place-items-center rounded-full bg-[#101218] text-xl font-bold text-white">
+                  <div className={`grid size-14 place-items-center rounded-full text-xl font-bold ${isDark ? 'border border-white/15 bg-white/10 text-white' : 'bg-[#101218] text-white'}`}>
                     {initials(user.name)}
                   </div>
                   <div className="min-w-0">
                     <p className="truncate text-base font-semibold">{user.name}</p>
-                    <p className="truncate text-xs text-[var(--muted)]">{user.email}</p>
+                    <p className={`truncate text-xs ${headerMutedText}`}>{user.email}</p>
                   </div>
                 </div>
 
@@ -713,7 +811,15 @@ function Shell() {
                         key={code}
                         type="button"
                         onClick={() => setLocale(code as ApiLocale)}
-                        className={`rounded-[10px] px-2 py-2 text-xs font-semibold ${locale === code ? 'bg-black text-white' : 'bg-[var(--paper-2)]'}`}
+                        className={`rounded-[10px] px-2 py-2 text-xs font-semibold ${
+                          locale === code
+                            ? isDark
+                              ? 'bg-white text-black'
+                              : 'bg-black text-white'
+                            : isDark
+                              ? 'bg-white/5 text-white'
+                              : 'bg-[var(--paper-2)]'
+                        }`}
                       >
                         {label}
                       </button>
@@ -735,7 +841,7 @@ function Shell() {
               </div>
             </details>
           ) : (
-            <Link to="/auth/login" className="rounded-full border border-[var(--line)] bg-white px-3 py-2 text-xs">
+            <Link to="/auth/login" className={`rounded-full px-3 py-2 text-xs ${headerGhostControl}`}>
               {t(locale, 'auth')}
             </Link>
           )}
@@ -792,7 +898,21 @@ function Footer() {
         <div className="space-y-3 text-xs text-[var(--muted)]">
           <div className="flex items-center justify-between">
             <span className="font-semibold uppercase tracking-[0.16em]">Contact</span>
-            <span className={`brand-script text-2xl leading-none ${isDark ? 'text-white' : 'text-black'}`}>happytality</span>
+            <span className={`leading-none ${isDark ? 'text-white' : 'text-black'}`}>
+            <Link to="/" className="leading-none w-[50px]">
+            <img
+              src={isDark ? '/logo-white.svg' : '/logo.svg'}
+              alt="logo"
+              className="w-auto object-contain h-[50px]"
+              onError={(e) => {
+                const img = e.currentTarget
+                if (img.dataset.fallbackApplied === '1') return
+                img.dataset.fallbackApplied = '1'
+                img.src = '/logo.svg'
+              }}
+            />
+          </Link>
+            </span>
           </div>
           <div className={`rounded-[10px] border p-3 ${isDark ? 'border-[var(--line)] bg-[var(--brand-blue)]/10' : 'border-[var(--line)] bg-[var(--paper-2)]'}`}>
             <p className={`font-semibold ${isDark ? 'text-white' : 'text-black'}`}>hello@happytality.com</p>
@@ -986,12 +1106,12 @@ function LandingPage() {
             <button
               key={instructor.id}
               onClick={() => navigate(`/instructors/${instructor.id}`)}
-              className="group relative min-w-[170px] flex-1 overflow-hidden rounded-[12px] bg-[#0f0f0f] text-left sm:min-w-[190px] lg:min-w-[200px]"
+              className="group relative min-w-[220px] flex-1 overflow-hidden rounded-[12px] bg-[#0f0f0f] text-left sm:min-w-[240px] lg:min-w-[250px]"
             >
               <img
                 src={instructor.avatar_url || heroImages[idx % heroImages.length]}
                 alt={instructor.name}
-                className="h-[180px] w-full object-cover transition duration-300 group-hover:scale-105"
+                className="h-[220px] w-full object-cover transition duration-300 group-hover:scale-105"
               />
               <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/25 to-transparent" />
               <span className={`absolute left-2 top-2 rounded-full px-2 py-0.5 text-[9px] font-semibold ${isDark ? 'bg-[var(--brand-cream)] text-[#1b1b1b]' : 'bg-white'}`}>
@@ -1042,7 +1162,7 @@ function LandingPage() {
               key={cat.slug}
               type="button"
               onClick={() => setActiveCategory(cat.slug)}
-              className={`rounded-full border px-3 py-1.5 text-sm font-semibold tracking-[0.14em] uppercase ${
+              className={`rounded-full border px-3.5 py-2 text-sm hover:bg-green/10 leading-none font-semibold tracking-[0.06em] uppercase ${
                 activeCategory === cat.slug
                   ? isDark
                     ? 'border-[var(--brand-olive)] bg-[var(--brand-olive)] text-white'
@@ -1059,7 +1179,19 @@ function LandingPage() {
 
         <div ref={courseSliderRef} className="mt-5 flex gap-3 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {visibleCourses.map((course, index) => (
-            <article key={course.id} className="group relative min-w-[220px] overflow-hidden rounded-[12px] sm:min-w-[240px] lg:min-w-[210px]">
+            <article
+              key={course.id}
+              className="group relative min-w-[220px] cursor-pointer overflow-hidden rounded-[12px] sm:min-w-[240px] lg:min-w-[210px]"
+              role="button"
+              tabIndex={0}
+              onClick={() => navigate(`/courses/${course.slug}`)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault()
+                  navigate(`/courses/${course.slug}`)
+                }
+              }}
+            >
               <img
                 src={course.cover_image_url || heroImages[index % heroImages.length]}
                 alt={textOf(course.title, locale)}
@@ -1067,26 +1199,27 @@ function LandingPage() {
               />
               <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/30 to-transparent" />
               <div className="absolute inset-x-0 bottom-0 p-3 text-white">
-                <p className="text-lg font-extrabold uppercase leading-[0.9]">{course.instructor?.name || 'Happytality'}</p>
-                <p className="mt-1 text-[11px] leading-4 text-white/90">{textOf(course.title, locale)}</p>
+                <p className="text-[15px] font-extrabold uppercase leading-[1.02] tracking-[0.01em]">{course.instructor?.name || 'Happytality'}</p>
+                <p className="mt-1 text-[11px] leading-4 text-white/90 line-clamp-2">{textOf(course.title, locale)}</p>
                 <div className="mt-2 flex items-center justify-between text-[10px]">
                   <span>{money(course.sale_price_amount ?? course.price_amount, course.currency || 'USD')}</span>
-                  <span className="text-[var(--accent)] uppercase">{course.type}</span>
+                  <span className="text-[var(--accent)] text-[9px] tracking-[0.06em] uppercase">{course.type}</span>
                 </div>
-                <div className="mt-2 flex gap-2">
+                <div className="mt-2 flex items-center justify-end gap-2">
                   <button
                     type="button"
-                    onClick={() => void addToCart(course.id, 1)}
-                    className={`rounded-full px-3 py-1 text-[10px] font-semibold uppercase ${isDark ? 'bg-[var(--brand-cream)] text-[#151515]' : 'bg-white text-black'}`}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      void addToCart(course.id, 1)
+                    }}
+                    aria-label="Add to cart"
+                    className={`inline-flex h-8 w-8 items-center justify-center rounded-full ${isDark ? 'bg-[var(--brand-cream)] text-[#151515]' : 'bg-white text-black'}`}
                   >
-                    {t(locale, 'addToCart')}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => navigate(`/courses/${course.slug}`)}
-                    className="rounded-full border border-white/60 px-3 py-1 text-[10px] font-semibold uppercase"
-                  >
-                    Open
+                    <svg viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor">
+                      <path d="M4 5h2l1.2 8.2a1 1 0 0 0 1 .8h7.9a1 1 0 0 0 1-.8L19 7H7" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+                      <circle cx="10" cy="18.5" r="1.2" fill="currentColor" stroke="none" />
+                      <circle cx="17" cy="18.5" r="1.2" fill="currentColor" stroke="none" />
+                    </svg>
                   </button>
                 </div>
               </div>
@@ -1178,10 +1311,17 @@ function FAQSection() {
 }
 
 function InstructorsPage() {
-  const { locale } = useApp()
+  const { locale, theme } = useApp()
   const [items, setItems] = useState<ApiInstructor[]>([])
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
+  const isDark = theme === 'dark'
+  const panelClass = isDark ? 'border-white/10 bg-[#0c111a]/92 text-white' : 'border-[var(--line)] bg-white'
+  const inputClass = isDark
+    ? 'border-white/12 bg-white/5 text-white placeholder:text-white/35'
+    : 'border-[var(--line)] bg-white'
+  const mutedText = isDark ? 'text-white/60' : 'text-[var(--muted)]'
+  const badgeClass = isDark ? 'bg-white/10 text-white/80 border border-white/10' : 'bg-slate-100 text-black'
 
   useEffect(() => {
     setLoading(true)
@@ -1202,22 +1342,22 @@ function InstructorsPage() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search instructors"
-            className="rounded-full border border-[var(--line)] bg-white px-4 py-2 text-sm"
+            className={`rounded-full border px-4 py-2 text-sm ${inputClass}`}
           />
         }
       />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {(loading ? fallbackInstructors : items).map((instructor, idx) => (
-          <Link key={instructor.id} to={`/instructors/${instructor.id}`} className="group overflow-hidden rounded-[16px] border border-[var(--line)] bg-white">
+          <Link key={instructor.id} to={`/instructors/${instructor.id}`} className={`group overflow-hidden rounded-[16px] border ${panelClass}`}>
             <img src={instructor.avatar_url || heroImages[idx % heroImages.length]} alt={instructor.name} className="h-[240px] w-full object-cover transition group-hover:scale-[1.02]" />
             <div className="p-4">
               <div className="flex items-center justify-between gap-3">
                 <h3 className="text-lg font-bold">{instructor.name}</h3>
-                <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] uppercase">{instructor.instructor_profile?.status || 'new'}</span>
+                <span className={`rounded-full px-2 py-1 text-[10px] uppercase ${badgeClass}`}>{instructor.instructor_profile?.status || 'new'}</span>
               </div>
-              <p className="mt-2 text-sm text-[var(--muted)]">{instructor.headline || 'Instructor profile'}</p>
-              <p className="mt-3 text-xs text-[var(--muted)]">{(instructor.instructor_profile?.total_students ?? 0).toLocaleString()} students</p>
+              <p className={`mt-2 text-sm ${mutedText}`}>{instructor.headline || 'Instructor profile'}</p>
+              <p className={`mt-3 text-xs ${mutedText}`}>{(instructor.instructor_profile?.total_students ?? 0).toLocaleString()} students</p>
             </div>
           </Link>
         ))}
@@ -1293,7 +1433,7 @@ function InstructorDetailPage() {
 }
 
 function CoursesCatalogPage() {
-  const { locale, addToCart } = useApp()
+  const { locale, addToCart, theme } = useApp()
   const navigate = useNavigate()
   const [params, setParams] = useSearchParams()
   const [items, setItems] = useState<ApiCourse[]>([])
@@ -1399,6 +1539,13 @@ function CoursesCatalogPage() {
   const totalResults = pagination.total || visibleItems.length
   const pageCount = Math.max(1, pagination.last_page || 1)
   const currentPage = Math.min(Math.max(1, pagination.current_page || 1), pageCount)
+  const isDark = theme === 'dark'
+  const panelClass = isDark ? 'border-white/10 bg-[#0c111a]/92 text-white' : 'border-[var(--line)] bg-white'
+  const softInputClass = isDark
+    ? 'border-white/12 bg-white/5 text-white placeholder:text-white/35'
+    : 'border-[var(--line)] bg-white'
+  const mutedText = isDark ? 'text-white/60' : 'text-[var(--muted)]'
+  const strongText = isDark ? 'text-white' : 'text-black'
 
   return (
     <>
@@ -1417,21 +1564,21 @@ function CoursesCatalogPage() {
               value={searchValue}
               onChange={(e) => setSearchValue(e.target.value)}
               placeholder="Search courses"
-              className="rounded-full border border-[var(--line)] bg-white px-4 py-2 text-sm"
+              className={`rounded-full border px-4 py-2 text-sm ${softInputClass}`}
             />
-            <button className="rounded-full bg-black px-4 py-2 text-xs font-semibold text-white">Search</button>
+            <button className={`rounded-full px-4 py-2 text-xs font-semibold ${isDark ? 'bg-white text-black' : 'bg-black text-white'}`}>Search</button>
           </form>
         }
       />
 
       {featuredStrip.length ? (
-        <section className="mb-6 rounded-[20px] border border-[var(--line)] bg-white p-4 sm:p-5">
+        <section className={`mb-6 rounded-[20px] border p-4 sm:p-5 ${panelClass}`}>
           <div className="mb-4 flex items-center justify-between gap-3">
             <div>
               <SectionLabel>Featured Courses</SectionLabel>
               <h2 className="text-xl font-bold">Highlighted picks stay visible across filters</h2>
             </div>
-            <span className="rounded-full bg-[var(--paper-2)] px-3 py-1 text-[10px] font-semibold tracking-[0.16em] uppercase">
+            <span className={`rounded-full px-3 py-1 text-[10px] font-semibold tracking-[0.16em] uppercase ${isDark ? 'bg-white/10' : 'bg-[var(--paper-2)]'}`}>
               curated
             </span>
           </div>
@@ -1447,7 +1594,7 @@ function CoursesCatalogPage() {
                       className="h-[170px] w-full object-cover"
                     />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/45 via-black/10 to-transparent" />
-                    <div className="absolute left-3 top-3 rounded-full bg-white/95 px-2 py-1 text-[10px] font-semibold uppercase">
+                    <div className="absolute left-3 top-3 rounded-full bg-[var(--brand-olive)]/95 px-2 py-1 text-[10px] font-semibold uppercase">
                       Featured
                     </div>
                     <div className="absolute bottom-3 left-3 flex items-center gap-2 text-white">
@@ -1474,7 +1621,7 @@ function CoursesCatalogPage() {
 
       <div className="grid gap-6 lg:grid-cols-[280px_1fr]">
         <aside className="space-y-4 lg:sticky lg:top-24 lg:self-start">
-          <div className="rounded-[18px] border border-[var(--line)] bg-white p-4">
+          <div className={`rounded-[18px] border p-4 ${panelClass}`}>
             <div className="flex items-center justify-between gap-2">
               <p className="text-xs font-semibold tracking-[0.16em] uppercase">Filters</p>
               <button
@@ -1484,20 +1631,20 @@ function CoursesCatalogPage() {
                   if (q) next.set('q', q)
                   setParams(next)
                 }}
-                className="text-xs text-[var(--muted)] hover:text-black"
+                className={`text-xs ${mutedText} ${isDark ? 'hover:text-white' : 'hover:text-black'}`}
               >
                 Reset
               </button>
             </div>
 
             <div className="mt-4">
-              <p className="mb-2 text-[11px] font-semibold tracking-[0.14em] uppercase text-[var(--muted)]">
+              <p className={`mb-2 text-[11px] font-semibold tracking-[0.14em] uppercase ${mutedText}`}>
                 Sort by
               </p>
               <select
                 value={sort}
                 onChange={(e) => setFilter('sort', e.target.value, true)}
-                className="w-full rounded-[12px] border border-[var(--line)] bg-[var(--paper-2)] px-3 py-2 text-sm"
+                className={`w-full rounded-[12px] border px-3 py-2 text-sm ${isDark ? 'border-white/12 bg-white/5 text-white' : 'border-[var(--line)] bg-[var(--paper-2)]'}`}
               >
                 <option value="newest">Newest</option>
                 <option value="popular">Popularity</option>
@@ -1508,7 +1655,7 @@ function CoursesCatalogPage() {
             </div>
 
             <div className="mt-4">
-              <p className="mb-2 text-[11px] font-semibold tracking-[0.14em] uppercase text-[var(--muted)]">
+              <p className={`mb-2 text-[11px] font-semibold tracking-[0.14em] uppercase ${mutedText}`}>
                 Format
               </p>
               <div className="grid grid-cols-2 gap-2">
@@ -1527,7 +1674,13 @@ function CoursesCatalogPage() {
                       type="button"
                       onClick={() => setFilter('type', value)}
                       className={`rounded-[10px] border px-3 py-2 text-xs font-semibold ${
-                        active ? 'border-black bg-black text-white' : 'border-[var(--line)] bg-[var(--paper-2)]'
+                        active
+                          ? isDark
+                            ? 'border-white bg-white text-black'
+                            : 'border-black bg-black text-white'
+                          : isDark
+                            ? 'border-white/12 bg-white/5 text-white'
+                            : 'border-[var(--line)] bg-[var(--paper-2)]'
                       }`}
                     >
                       {label}
@@ -1539,14 +1692,14 @@ function CoursesCatalogPage() {
 
             <div className="mt-4">
               <div className="mb-2 flex items-center justify-between gap-2">
-                <p className="text-[11px] font-semibold tracking-[0.14em] uppercase text-[var(--muted)]">
+                <p className={`text-[11px] font-semibold tracking-[0.14em] uppercase ${mutedText}`}>
                   Topics
                 </p>
                 {category ? (
                   <button
                     type="button"
                     onClick={() => setFilter('category', '')}
-                    className="text-[11px] text-[var(--muted)] hover:text-black"
+                    className={`text-[11px] ${mutedText} ${isDark ? 'hover:text-white' : 'hover:text-black'}`}
                   >
                     View all
                   </button>
@@ -1561,11 +1714,17 @@ function CoursesCatalogPage() {
                       type="button"
                       onClick={() => setFilter('category', active ? '' : item.slug)}
                       className={`flex w-full items-center justify-between rounded-[10px] px-3 py-2 text-left text-sm ${
-                        active ? 'bg-black text-white' : 'hover:bg-[var(--paper-2)]'
+                        active
+                          ? isDark
+                            ? 'bg-white text-black'
+                            : 'bg-black text-white'
+                          : isDark
+                            ? 'hover:bg-white/5'
+                            : 'hover:bg-[var(--paper-2)]'
                       }`}
                     >
                       <span>{textOf(item.name, locale)}</span>
-                      <span className={`text-[10px] ${active ? 'text-white/80' : 'text-[var(--muted)]'}`}>
+                      <span className={`text-[10px] ${active ? (isDark ? 'text-black/70' : 'text-white/80') : mutedText}`}>
                         {active ? 'On' : 'Filter'}
                       </span>
                     </button>
@@ -1574,9 +1733,9 @@ function CoursesCatalogPage() {
               </div>
             </div>
 
-            <div className="mt-4 rounded-[12px] bg-[var(--paper-2)] p-3">
+            <div className={`mt-4 rounded-[12px] p-3 ${isDark ? 'border border-white/10 bg-white/5' : 'bg-[var(--paper-2)]'}`}>
               <p className="text-xs font-semibold">Search courses</p>
-              <p className="mt-1 text-xs text-[var(--muted)]">
+              <p className={`mt-1 text-xs ${mutedText}`}>
                 Title, slug and localized names are searchable via API.
               </p>
               <form
@@ -1590,9 +1749,9 @@ function CoursesCatalogPage() {
                   value={searchValue}
                   onChange={(e) => setSearchValue(e.target.value)}
                   placeholder="e.g. healing, astrology"
-                  className="w-full rounded-[10px] border border-[var(--line)] bg-white px-3 py-2 text-xs"
+                  className={`w-full rounded-[10px] border px-3 py-2 text-xs ${softInputClass}`}
                 />
-                <button className="rounded-[10px] bg-black px-3 py-2 text-xs font-semibold text-white">
+                <button className={`rounded-[10px] px-3 py-2 text-xs font-semibold ${isDark ? 'bg-white text-black' : 'bg-black text-white'}`}>
                   Go
                 </button>
               </form>
@@ -1601,12 +1760,12 @@ function CoursesCatalogPage() {
         </aside>
 
         <div>
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-[18px] border border-[var(--line)] bg-white px-4 py-3">
+          <div className={`mb-4 flex flex-wrap items-center justify-between gap-3 rounded-[18px] border px-4 py-3 ${panelClass}`}>
             <div className="text-sm">
               <span className="font-semibold">{totalResults.toLocaleString()}</span> results
-              {q ? <span className="text-[var(--muted)]"> for “{q}”</span> : null}
+              {q ? <span className={mutedText}> for “{q}”</span> : null}
               {category ? (
-                <span className="text-[var(--muted)]">
+                <span className={mutedText}>
                   {' '}
                   in {textOf(mergedTopics.find((it) => it.slug === category)?.name, locale) || category}
                 </span>
@@ -1625,7 +1784,13 @@ function CoursesCatalogPage() {
                     type="button"
                     onClick={() => setFilter(key, value)}
                     className={`rounded-full border px-3 py-1.5 font-semibold ${
-                      active ? 'border-black bg-black text-white' : 'border-[var(--line)] bg-[var(--paper-2)]'
+                      active
+                        ? isDark
+                          ? 'border-white bg-white text-black'
+                          : 'border-black bg-black text-white'
+                        : isDark
+                          ? 'border-white/12 bg-white/5 text-white'
+                          : 'border-[var(--line)] bg-[var(--paper-2)]'
                     }`}
                   >
                     {label}
@@ -1642,7 +1807,12 @@ function CoursesCatalogPage() {
               const reviewsCount = Number(course.reviews_count ?? 0)
               const lessonsCount = course.lessons_count ?? course.lessons_count_count ?? 0
               return (
-                <article key={course.id} className="group overflow-hidden rounded-[18px] border border-[var(--line)] bg-white shadow-[0_12px_30px_-24px_rgba(0,0,0,0.35)]">
+                <article
+                  key={course.id}
+                  className={`group overflow-hidden rounded-[18px] border shadow-[0_12px_30px_-24px_rgba(0,0,0,0.35)] ${
+                    isDark ? 'border-white/10 bg-[#0d121a]' : 'border-[var(--line)] bg-white'
+                  }`}
+                >
                   <div className="relative">
                     <Link to={`/courses/${course.slug}`} className="block">
                       <img
@@ -1655,7 +1825,7 @@ function CoursesCatalogPage() {
 
                     <div className="absolute left-3 top-3 flex flex-wrap gap-2">
                       {course.is_featured ? (
-                        <span className="rounded-full bg-white px-2.5 py-1 text-[10px] font-semibold uppercase">Featured</span>
+                        <span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase ${isDark ? 'bg-[var(--brand-olive)] text-white' : 'bg-white'}`}>Featured</span>
                       ) : null}
                       <span className="rounded-full bg-black/80 px-2.5 py-1 text-[10px] font-semibold uppercase text-white">
                         {(course.type || 'online').replace('_', ' ')}
@@ -1665,7 +1835,7 @@ function CoursesCatalogPage() {
                     <button
                       type="button"
                       title="Watch later"
-                      className="absolute right-3 top-3 grid size-8 place-items-center rounded-full bg-white/90 text-sm"
+                      className={`absolute right-3 top-3 grid size-8 place-items-center rounded-full text-sm ${isDark ? 'bg-[#0f1520]/90 text-white border border-white/15' : 'bg-white/90'}`}
                     >
                       ♡
                     </button>
@@ -1684,7 +1854,7 @@ function CoursesCatalogPage() {
                   </div>
 
                   <div className="p-4">
-                    <div className="flex items-center justify-between gap-2 text-[10px] uppercase tracking-[0.16em] text-[var(--muted)]">
+                    <div className={`flex items-center justify-between gap-2 text-[10px] uppercase tracking-[0.16em] ${mutedText}`}>
                       <span>{course.category ? textOf(course.category.name, locale) : 'General'}</span>
                       <span>{ratingLabel}★</span>
                     </div>
@@ -1693,15 +1863,15 @@ function CoursesCatalogPage() {
                       {textOf(course.title, locale)}
                     </Link>
 
-                    <p className="mt-2 line-clamp-2 text-xs leading-5 text-[var(--muted)]">
+                    <p className={`mt-2 line-clamp-2 text-xs leading-5 ${mutedText}`}>
                       {textOf(course.short_description || course.description, locale) || 'Course overview, learning goals, and practical outcomes.'}
                     </p>
 
-                    <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-[var(--muted)]">
-                      <p>Instructor: <span className="font-medium text-black">{course.instructor?.name || 'Happytality'}</span></p>
-                      <p>Lessons: <span className="font-medium text-black">{lessonsCount}</span></p>
-                      <p>Duration: <span className="font-medium text-black">{course.duration_minutes ?? 0} min</span></p>
-                      <p>Reviews: <span className="font-medium text-black">{reviewsCount}</span></p>
+                    <div className={`mt-3 grid grid-cols-2 gap-2 text-xs ${mutedText}`}>
+                      <p>Instructor: <span className={`font-medium ${strongText}`}>{course.instructor?.name || 'Happytality'}</span></p>
+                      <p>Lessons: <span className={`font-medium ${strongText}`}>{lessonsCount}</span></p>
+                      <p>Duration: <span className={`font-medium ${strongText}`}>{course.duration_minutes ?? 0} min</span></p>
+                      <p>Reviews: <span className={`font-medium ${strongText}`}>{reviewsCount}</span></p>
                     </div>
 
                     <div className="mt-4 flex items-end justify-between gap-3">
@@ -1711,23 +1881,17 @@ function CoursesCatalogPage() {
                           <p className="text-xs text-[var(--muted)] line-through">{money(course.price_amount, course.currency || 'USD')}</p>
                         ) : null}
                       </div>
-                      <div className="flex gap-2">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            void addToCart(course.id, 1).then(() => navigate('/checkout'))
-                          }}
-                          className="rounded-full bg-black px-3 py-2 text-[10px] font-semibold tracking-[0.14em] text-white uppercase"
-                        >
-                          Enroll now
-                        </button>
-                        <Link
-                          to={`/courses/${course.slug}`}
-                          className="rounded-full border border-[var(--line)] px-3 py-2 text-[10px] font-semibold tracking-[0.14em] uppercase"
-                        >
-                          Learn more
-                        </Link>
-                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          void addToCart(course.id, 1).then(() => navigate('/checkout'))
+                        }}
+                        className={`rounded-full px-3 py-2 text-[10px] font-semibold tracking-[0.14em] uppercase ${
+                          isDark ? 'bg-white text-black' : 'bg-black text-white'
+                        }`}
+                      >
+                        Enroll now
+                      </button>
                     </div>
                   </div>
                 </article>
@@ -1735,10 +1899,10 @@ function CoursesCatalogPage() {
             })}
           </div>
 
-          <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-[18px] border border-[var(--line)] bg-white px-4 py-3">
-            <p className="text-sm text-[var(--muted)]">
-              Page <span className="font-semibold text-black">{currentPage}</span> of{' '}
-              <span className="font-semibold text-black">{pageCount}</span>
+          <div className={`mt-5 flex flex-wrap items-center justify-between gap-3 rounded-[18px] border px-4 py-3 ${panelClass}`}>
+            <p className={`text-sm ${mutedText}`}>
+              Page <span className={`font-semibold ${strongText}`}>{currentPage}</span> of{' '}
+              <span className={`font-semibold ${strongText}`}>{pageCount}</span>
             </p>
             <div className="flex flex-wrap items-center gap-2">
               <button
@@ -1759,7 +1923,13 @@ function CoursesCatalogPage() {
                     type="button"
                     onClick={() => setFilter('page', String(pageNumber), false)}
                     className={`grid size-9 place-items-center rounded-full text-xs font-semibold ${
-                      pageNumber === currentPage ? 'bg-black text-white' : 'border border-[var(--line)]'
+                      pageNumber === currentPage
+                        ? isDark
+                          ? 'bg-white text-black'
+                          : 'bg-black text-white'
+                        : isDark
+                          ? 'border border-white/12 text-white'
+                          : 'border border-[var(--line)]'
                     }`}
                   >
                     {pageNumber}
@@ -1786,13 +1956,18 @@ function CoursesCatalogPage() {
 
 function CourseDetailPage() {
   const { slug } = useParams()
-  const { locale, addToCart } = useApp()
+  const { locale, addToCart, theme, token } = useApp()
   const [course, setCourse] = useState<ApiCourse | null>(null)
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<'overview' | 'curriculum' | 'instructor' | 'reviews'>(
     'overview',
   )
   const [relatedCourses, setRelatedCourses] = useState<ApiCourse[]>([])
+  const [selectedLessonId, setSelectedLessonId] = useState<number | null>(null)
+  const [lessonProgressMap, setLessonProgressMap] = useState<Record<string, ApiLessonProgressItem>>({})
+  const [playerStatus, setPlayerStatus] = useState<string | null>(null)
+  const lessonVideoRef = useRef<HTMLVideoElement | null>(null)
+  const lastSyncedPositionRef = useRef<Record<number, number>>({})
 
   useEffect(() => {
     if (!slug) return
@@ -1813,38 +1988,41 @@ function CourseDetailPage() {
       .finally(() => setLoading(false))
   }, [slug])
 
+  useEffect(() => {
+    const firstLessonId = course?.lessons?.[0]?.id
+    if (!selectedLessonId && firstLessonId) {
+      setSelectedLessonId(firstLessonId)
+    }
+  }, [course, selectedLessonId])
+
+  useEffect(() => {
+    if (!token || !course?.id) {
+      setLessonProgressMap({})
+      return
+    }
+    api
+      .courseLessonProgress(course.id, token)
+      .then((res) => setLessonProgressMap(res.progress || {}))
+      .catch(() => setLessonProgressMap({}))
+  }, [token, course?.id])
+
   if (!course && loading) {
     return <div className="mt-10 text-sm text-[var(--muted)]">Loading course...</div>
   }
 
   const price = money(course?.sale_price_amount ?? course?.price_amount, course?.currency || 'USD')
   const oldPrice = course?.sale_price_amount ? money(course.price_amount, course.currency || 'USD') : null
-  const lessons = course?.lessons?.length ? course.lessons : sampleLessons()
-  const reviews = [
-    {
-      id: 1,
-      name: 'Anna M.',
-      rating: 5,
-      role: 'Student',
-      text: 'Very practical course. Strong structure, clear lessons, and useful examples I could apply right away.',
-    },
-    {
-      id: 2,
-      name: 'Giorgi K.',
-      rating: 4,
-      role: 'Founder',
-      text: 'Great production quality and concise teaching style. Would love a few more advanced case studies.',
-    },
-    {
-      id: 3,
-      name: 'Elena P.',
-      rating: 5,
-      role: 'Marketing Lead',
-      text: 'Exactly the kind of premium niche content we were looking for. Good balance of theory and execution.',
-    },
-  ]
-  const averageRating =
-    reviews.reduce((sum, review) => sum + review.rating, 0) / Math.max(1, reviews.length)
+  const lessons = course?.lessons ?? []
+  const reviews = (course?.reviews ?? []).map((review: any) => ({
+    id: review.id,
+    name: review.author_name || 'Student',
+    rating: Number(review.rating || 0),
+    role: review.author_role || 'Student',
+    text: review.review || '',
+  }))
+  const averageRating = reviews.length
+    ? reviews.reduce((sum, review) => sum + review.rating, 0) / Math.max(1, reviews.length)
+    : Number(course?.avg_rating || 0)
   const learningPoints = [
     'Build a repeatable framework instead of random tactics',
     'Understand positioning, messaging and offer structure',
@@ -1890,26 +2068,59 @@ function CourseDetailPage() {
     course?.instructor?.avatar_url ||
     (relatedCourses[0]?.instructor?.avatar_url as string | undefined) ||
     heroImages[0]
+  const isDark = theme === 'dark'
+  const panelClass = isDark ? 'border-white/10 bg-[#0c111a]/92 text-white' : 'border-[var(--line)] bg-white'
+  const panelSoftClass = isDark ? 'border-white/10 bg-white/5 text-white' : 'border-[var(--line)] bg-[var(--paper-2)]'
+  const mutedText = isDark ? 'text-white/60' : 'text-[var(--muted)]'
+  const strongText = isDark ? 'text-white' : 'text-black'
+  const selectedLesson = lessons.find((lesson: any) => lesson.id === selectedLessonId) ?? lessons[0] ?? null
+  const selectedLessonProgress = selectedLesson ? lessonProgressMap[String(selectedLesson.id)] : null
+
+  const persistLessonProgress = async (videoEl?: HTMLVideoElement | null) => {
+    if (!token || !selectedLesson?.id) return
+    const player = videoEl ?? lessonVideoRef.current
+    if (!player) return
+    const currentSeconds = Math.max(0, Math.floor(player.currentTime || 0))
+    const lastSent = lastSyncedPositionRef.current[selectedLesson.id] ?? -1
+    if (Math.abs(currentSeconds - lastSent) < 5 && !player.ended) return
+    lastSyncedPositionRef.current[selectedLesson.id] = currentSeconds
+    try {
+      const res = await api.saveLessonProgress(
+        selectedLesson.id,
+        {
+          last_position_seconds: currentSeconds,
+          duration_seconds: Math.floor(player.duration || selectedLesson.duration_seconds || 0),
+          watched_delta_seconds: Math.max(0, currentSeconds - Math.max(0, lastSent)),
+          is_completed: player.ended,
+        },
+        token,
+      )
+      setLessonProgressMap((prev) => ({ ...prev, [String(selectedLesson.id)]: res.progress }))
+      setPlayerStatus(player.ended ? 'Completed' : `Saved at ${Math.floor(currentSeconds / 60)}:${String(currentSeconds % 60).padStart(2, '0')}`)
+    } catch {
+      // Keep UI responsive even if progress sync fails.
+    }
+  }
 
   return (
     <>
-      <section className="mt-10 rounded-[24px] border border-[var(--line)] bg-white p-5 shadow-[0_20px_50px_-45px_rgba(0,0,0,0.35)] sm:p-6">
-        <div className="flex flex-wrap items-center gap-2 text-[11px] text-[var(--muted)]">
-          <Link to="/" className="hover:text-black">Home</Link>
+      <section className={`mt-10 rounded-[24px] border p-5 shadow-[0_20px_50px_-45px_rgba(0,0,0,0.35)] sm:p-6 ${panelClass}`}>
+        <div className={`flex flex-wrap items-center gap-2 text-[11px] ${mutedText}`}>
+          <Link to="/" className={isDark ? 'hover:text-white' : 'hover:text-black'}>Home</Link>
           <span>/</span>
-          <Link to="/courses" className="hover:text-black">Courses</Link>
+          <Link to="/courses" className={isDark ? 'hover:text-white' : 'hover:text-black'}>Courses</Link>
           <span>/</span>
-          <span className="text-black">{textOf(course?.title, locale)}</span>
+          <span className={strongText}>{textOf(course?.title, locale)}</span>
         </div>
 
         <div className="mt-4 grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
           <div>
             <div className="flex flex-wrap items-center gap-2">
-              <span className="rounded-full bg-black px-3 py-1 text-[10px] font-semibold tracking-[0.16em] text-white uppercase">
-                {(course?.type || 'online').toUpperCase()}
-              </span>
+                <span className="rounded-full bg-black px-3 py-1 text-[10px] font-semibold tracking-[0.16em] text-white uppercase">
+                  {(course?.type || 'online').toUpperCase()}
+                </span>
               {course?.category ? (
-                <span className="rounded-full border border-[var(--line)] px-3 py-1 text-[10px] font-semibold tracking-[0.14em] uppercase text-[var(--muted)]">
+                <span className={`rounded-full border px-3 py-1 text-[10px] font-semibold tracking-[0.14em] uppercase ${isDark ? 'border-white/15 text-white/70' : 'border-[var(--line)] text-[var(--muted)]'}`}>
                   {textOf(course.category.name, locale)}
                 </span>
               ) : null}
@@ -1918,49 +2129,51 @@ function CourseDetailPage() {
             <h1 className="mt-4 text-3xl leading-tight font-extrabold tracking-tight sm:text-4xl">
               {textOf(course?.title, locale)}
             </h1>
-            <p className="mt-3 max-w-[720px] text-sm leading-7 text-[var(--muted)]">
+            <p className={`mt-3 max-w-[720px] text-sm leading-7 ${mutedText}`}>
               {textOf(course?.description || course?.short_description, locale) ||
                 'A premium course page with curriculum, reviews, instructor information, and purchase-ready sidebar flow.'}
             </p>
 
             <div className="mt-5 flex flex-wrap items-center gap-4 text-xs">
-              <div className="flex items-center gap-2 rounded-full border border-[var(--line)] bg-[var(--paper-2)] px-3 py-2">
+              <div className={`flex items-center gap-2 rounded-full border px-3 py-2 ${isDark ? 'border-white/12 bg-white/5' : 'border-[var(--line)] bg-[var(--paper-2)]'}`}>
                 <img
                   src={instructorAvatar}
                   alt={instructorName}
                   className="size-7 rounded-full object-cover"
                 />
                 <div className="leading-tight">
-                  <p className="font-semibold text-black">{instructorName}</p>
-                  <p className="text-[10px] text-[var(--muted)]">Instructor</p>
+                  <p className={`font-semibold ${strongText}`}>{instructorName}</p>
+                  <p className={`text-[10px] ${mutedText}`}>Instructor</p>
                 </div>
               </div>
-              <div className="rounded-full border border-[var(--line)] px-3 py-2">
+              <div className={`rounded-full border px-3 py-2 ${isDark ? 'border-white/12' : 'border-[var(--line)]'}`}>
                 {Number(averageRating).toFixed(1)} / 5.0 ({reviews.length} reviews)
               </div>
-              <div className="rounded-full border border-[var(--line)] px-3 py-2">
+              <div className={`rounded-full border px-3 py-2 ${isDark ? 'border-white/12' : 'border-[var(--line)]'}`}>
                 {course?.lessons?.length ?? course?.lessons_count ?? lessons.length} lessons
               </div>
-              <div className="rounded-full border border-[var(--line)] px-3 py-2">
+              <div className={`rounded-full border px-3 py-2 ${isDark ? 'border-white/12' : 'border-[var(--line)]'}`}>
                 {course?.duration_minutes ?? 240} min
               </div>
-              <div className="rounded-full border border-[var(--line)] px-3 py-2">
+              <div className={`rounded-full border px-3 py-2 ${isDark ? 'border-white/12' : 'border-[var(--line)]'}`}>
                 Updated 2026
               </div>
             </div>
           </div>
 
-          <div className="rounded-[18px] border border-[var(--line)] bg-[var(--paper-2)] p-4">
-            <p className="text-[10px] font-semibold tracking-[0.18em] text-[var(--muted)] uppercase">
+          <div className={`rounded-[18px] border p-4 ${panelSoftClass}`}>
+            <p className={`text-[10px] font-semibold tracking-[0.18em] uppercase ${mutedText}`}>
               Enrollment offer
             </p>
             <p className="mt-3 text-3xl font-extrabold">{price}</p>
-            {oldPrice ? <p className="mt-1 text-sm text-[var(--muted)] line-through">{oldPrice}</p> : null}
+            {oldPrice ? <p className={`mt-1 text-sm line-through ${mutedText}`}>{oldPrice}</p> : null}
             <div className="mt-4 flex flex-wrap gap-2">
               {tags.map((tag) => (
                 <span
                   key={tag}
-                  className="rounded-full border border-[var(--line)] bg-white px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em]"
+                  className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] ${
+                    isDark ? 'border-white/12 bg-white/5 text-white' : 'border-[var(--line)] bg-white'
+                  }`}
                 >
                   {tag}
                 </span>
@@ -1971,71 +2184,126 @@ function CourseDetailPage() {
       </section>
 
       <section className="mt-6 grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
-        <div className="overflow-hidden rounded-[18px] border border-[var(--line)] bg-white">
-          <div className="relative">
-            <img
-              src={course?.cover_image_url || heroImages[0]}
-              alt={textOf(course?.title, locale)}
-              className="h-[320px] w-full object-cover sm:h-[440px]"
-            />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent" />
-            <button
-              type="button"
-              className="absolute left-1/2 top-1/2 grid size-14 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full bg-white/95 shadow-xl"
-              onClick={() => {
-                // Scroll to promo video section below
-                document.getElementById('course-promo-video')?.scrollIntoView({ behavior: 'smooth' })
-              }}
-              aria-label="Play course promo"
-            >
-              <span className="ml-1 inline-block size-0 border-y-[8px] border-y-transparent border-l-[13px] border-l-black" />
-            </button>
+        <div className={`overflow-hidden rounded-[18px] border ${isDark ? 'border-white/10 bg-[#0d121a]' : 'border-[var(--line)] bg-white'}`}>
+          <div className="relative h-full min-h-[320px] sm:min-h-[440px]">
+            {selectedLesson?.video_url ? (
+              <>
+                <video
+                  ref={lessonVideoRef}
+                  controls
+                  playsInline
+                  preload="metadata"
+                  poster={selectedLesson.cover_image_url || course?.cover_image_url || heroImages[0]}
+                  className="h-full w-full bg-black object-cover"
+                  onLoadedMetadata={(e) => {
+                    const progress = selectedLessonProgress?.last_position_seconds ?? 0
+                    if (progress > 2 && progress < (e.currentTarget.duration || Number.MAX_SAFE_INTEGER) - 2) {
+                      try {
+                        e.currentTarget.currentTime = progress
+                        setPlayerStatus(`Resumed from ${Math.floor(progress / 60)}:${String(progress % 60).padStart(2, '0')}`)
+                      } catch {
+                        // ignore seek errors
+                      }
+                    } else {
+                      setPlayerStatus(null)
+                    }
+                  }}
+                  onTimeUpdate={(e) => {
+                    void persistLessonProgress(e.currentTarget)
+                  }}
+                  onPause={(e) => {
+                    void persistLessonProgress(e.currentTarget)
+                  }}
+                  onEnded={(e) => {
+                    void persistLessonProgress(e.currentTarget)
+                  }}
+                >
+                  <source src={selectedLesson.video_url} type="video/mp4" />
+                </video>
+                <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 via-black/35 to-transparent p-4 text-white">
+                  <div className="flex flex-wrap items-end justify-between gap-3">
+                    <div>
+                      <p className="text-[10px] font-semibold tracking-[0.16em] uppercase text-white/70">Lesson player</p>
+                      <p className="mt-1 text-sm font-semibold">
+                        {selectedLesson.sort_order}. {textOf(selectedLesson.title, locale)}
+                      </p>
+                      <p className="mt-1 text-xs text-white/70">
+                        {selectedLesson.duration_seconds ? `${Math.round(selectedLesson.duration_seconds / 60)} min` : 'Duration not set'}
+                        {selectedLessonProgress ? ` · ${selectedLessonProgress.completed_percent}% completed` : ''}
+                      </p>
+                    </div>
+                    {playerStatus ? <p className="text-xs text-white/75">{playerStatus}</p> : null}
+                  </div>
+                </div>
+              </>
+            ) : (
+              <>
+                <img
+                  src={selectedLesson?.cover_image_url || course?.cover_image_url || heroImages[0]}
+                  alt={textOf(course?.title, locale)}
+                  className="h-full w-full object-cover"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent" />
+                <button
+                  type="button"
+                  className={`absolute left-1/2 top-1/2 grid size-14 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full shadow-xl ${isDark ? 'bg-white text-black' : 'bg-white/95'}`}
+                  onClick={() => {
+                    document.getElementById('course-promo-video')?.scrollIntoView({ behavior: 'smooth' })
+                  }}
+                  aria-label="Play course promo"
+                >
+                  <span className="ml-1 inline-block size-0 border-y-[8px] border-y-transparent border-l-[13px] border-l-black" />
+                </button>
+              </>
+            )}
           </div>
         </div>
 
         <aside className="space-y-5 lg:sticky lg:top-24 lg:self-start">
-          <div className="rounded-[18px] border border-[var(--line)] bg-white p-5">
-            <p className="text-sm text-[var(--muted)]">Course Price</p>
+          <div className={`rounded-[18px] border p-5 ${panelClass}`}>
+            <p className={`text-sm ${mutedText}`}>Course Price</p>
             <p className="mt-1 text-3xl font-extrabold">{price}</p>
             {oldPrice ? (
-              <p className="text-sm text-[var(--muted)] line-through">{oldPrice}</p>
+              <p className={`text-sm line-through ${mutedText}`}>{oldPrice}</p>
             ) : null}
 
             <div className="mt-4 space-y-2">
               <button
                 onClick={() => void addToCart(course!.id, 1)}
-                className="w-full rounded-full bg-black px-4 py-3 text-xs font-semibold tracking-[0.16em] text-white uppercase"
+                className={`w-full rounded-full px-4 py-3 text-xs font-semibold tracking-[0.16em] uppercase ${isDark ? 'bg-white text-black' : 'bg-black text-white'}`}
               >
                 {t(locale, 'addToCart')}
               </button>
               <Link
                 to="/checkout"
-                className="block w-full rounded-full border border-[var(--line)] px-4 py-3 text-center text-xs font-semibold tracking-[0.16em] uppercase"
+                className={`block w-full rounded-full border px-4 py-3 text-center text-xs font-semibold tracking-[0.16em] uppercase ${
+                  isDark ? 'border-white/15 text-white' : 'border-[var(--line)]'
+                }`}
               >
                 {t(locale, 'buyNow')}
               </Link>
             </div>
 
-            <div className="mt-5 rounded-[14px] bg-[var(--paper-2)] p-4">
+            <div className={`mt-5 rounded-[14px] p-4 ${isDark ? 'border border-white/10 bg-white/5' : 'bg-[var(--paper-2)]'}`}>
               <p className="text-xs font-semibold tracking-[0.16em] uppercase">This course includes</p>
-              <ul className="mt-3 space-y-2 text-xs text-[var(--muted)]">
+              <ul className={`mt-3 space-y-2 text-xs ${mutedText}`}>
                 {sidebarMeta.map(([label, value]) => (
                   <li key={label} className="flex items-start justify-between gap-3">
                     <span>{label}</span>
-                    <span className="font-semibold text-black">{value}</span>
+                    <span className={`font-semibold ${strongText}`}>{value}</span>
                   </li>
                 ))}
               </ul>
             </div>
 
-            <div className="mt-4 rounded-[14px] border border-[var(--line)] p-4">
+            <div className={`mt-4 rounded-[14px] border p-4 ${isDark ? 'border-white/12' : 'border-[var(--line)]'}`}>
               <p className="text-xs font-semibold tracking-[0.16em] uppercase">Share course</p>
               <div className="mt-3 flex gap-2 text-xs">
                 {['Copy link', 'Telegram', 'WhatsApp'].map((item) => (
                   <button
                     key={item}
                     type="button"
-                    className="rounded-full border border-[var(--line)] px-3 py-2"
+                    className={`rounded-full border px-3 py-2 ${isDark ? 'border-white/12 bg-white/5 text-white' : 'border-[var(--line)]'}`}
                     onClick={() => {
                       if (item === 'Copy link') {
                         void navigator.clipboard?.writeText(window.location.href)
@@ -2051,7 +2319,7 @@ function CourseDetailPage() {
 
           <div
             id="course-promo-video"
-            className="rounded-[18px] border border-[var(--line)] bg-white p-5"
+            className={`rounded-[18px] border p-5 ${panelClass}`}
           >
             <p className="text-sm font-semibold">Course Promo Video</p>
             <video
@@ -2071,7 +2339,7 @@ function CourseDetailPage() {
         </aside>
       </section>
 
-      <section className="mt-6 rounded-[18px] border border-[var(--line)] bg-white p-4 sm:p-5">
+      <section className={`mt-6 rounded-[18px] border p-4 sm:p-5 ${panelClass}`}>
         <div className="flex flex-wrap gap-2 border-b border-[var(--line)] pb-4">
           {tabList.map(([key, label]) => (
             <button
@@ -2080,8 +2348,12 @@ function CourseDetailPage() {
               onClick={() => setActiveTab(key)}
               className={`rounded-full px-4 py-2 text-xs font-semibold tracking-[0.14em] uppercase ${
                 activeTab === key
-                  ? 'bg-black text-white'
-                  : 'border border-[var(--line)] bg-white text-[#444]'
+                  ? isDark
+                    ? 'bg-white text-black'
+                    : 'bg-black text-white'
+                  : isDark
+                    ? 'border border-white/12 bg-white/5 text-white/80'
+                    : 'border border-[var(--line)] bg-white text-[#444]'
               }`}
             >
               {label}
@@ -2095,7 +2367,7 @@ function CourseDetailPage() {
               <div className="space-y-5">
                 <div>
                   <h2 className="text-xl font-bold">Course Description</h2>
-                  <p className="mt-3 text-sm leading-7 text-[var(--muted)]">
+                  <p className={`mt-3 text-sm leading-7 ${mutedText}`}>
                     {textOf(course?.description || course?.short_description, locale) ||
                       'This page follows a full course-detail structure: overview, curriculum, instructor block, reviews, and a purchase-ready sticky sidebar.'}
                   </p>
@@ -2106,7 +2378,7 @@ function CourseDetailPage() {
                     {learningPoints.map((point) => (
                       <div
                         key={point}
-                        className="rounded-[12px] border border-[var(--line)] bg-[var(--paper-2)] px-3 py-2 text-sm"
+                        className={`rounded-[12px] border px-3 py-2 text-sm ${isDark ? 'border-white/10 bg-white/5' : 'border-[var(--line)] bg-[var(--paper-2)]'}`}
                       >
                         {point}
                       </div>
@@ -2116,20 +2388,20 @@ function CourseDetailPage() {
               </div>
 
               <div className="space-y-5">
-                <div className="rounded-[14px] border border-[var(--line)] p-4">
+                <div className={`rounded-[14px] border p-4 ${isDark ? 'border-white/10 bg-white/5' : 'border-[var(--line)]'}`}>
                   <h3 className="text-base font-bold">Requirements</h3>
-                  <ul className="mt-3 space-y-2 text-sm text-[var(--muted)]">
+                  <ul className={`mt-3 space-y-2 text-sm ${mutedText}`}>
                     {requirements.map((item) => (
                       <li key={item} className="flex gap-2">
-                        <span className="mt-[6px] inline-block h-1.5 w-1.5 rounded-full bg-black" />
+                        <span className={`mt-[6px] inline-block h-1.5 w-1.5 rounded-full ${isDark ? 'bg-white' : 'bg-black'}`} />
                         <span>{item}</span>
                       </li>
                     ))}
                   </ul>
                 </div>
-                <div className="rounded-[14px] border border-[var(--line)] p-4">
+                <div className={`rounded-[14px] border p-4 ${isDark ? 'border-white/10 bg-white/5' : 'border-[var(--line)]'}`}>
                   <h3 className="text-base font-bold">Who this course is for</h3>
-                  <ul className="mt-3 space-y-2 text-sm text-[var(--muted)]">
+                  <ul className={`mt-3 space-y-2 text-sm ${mutedText}`}>
                     {audience.map((item) => (
                       <li key={item} className="flex gap-2">
                         <span className="mt-[6px] inline-block h-1.5 w-1.5 rounded-full bg-[var(--brand)]" />
@@ -2144,16 +2416,21 @@ function CourseDetailPage() {
 
           {activeTab === 'curriculum' ? (
             <div className="space-y-3">
-              <div className="mb-2 flex flex-wrap items-center justify-between gap-3 rounded-[14px] bg-[var(--paper-2)] px-4 py-3 text-sm">
+              <div className={`mb-2 flex flex-wrap items-center justify-between gap-3 rounded-[14px] px-4 py-3 text-sm ${isDark ? 'border border-white/10 bg-white/5' : 'bg-[var(--paper-2)]'}`}>
                 <span>
                   <strong>{lessons.length}</strong> lessons
                 </span>
                 <span>{course?.duration_minutes ?? 240} minutes total</span>
               </div>
+              {!lessons.length ? (
+                <div className={`rounded-[14px] border border-dashed p-4 text-sm ${isDark ? 'border-white/12 text-white/60' : 'border-[var(--line)] text-[var(--muted)]'}`}>
+                  No lessons in this course yet. Instructors can add lessons from the dashboard Create Course tab.
+                </div>
+              ) : null}
               {lessons.map((lesson: any, idx: number) => (
                 <details
                   key={lesson.id || lesson.sort_order || idx}
-                  className="group rounded-[14px] border border-[var(--line)] bg-white px-4 py-3"
+                className={`group rounded-[14px] border px-4 py-3 ${isDark ? 'border-white/10 bg-white/5' : 'border-[var(--line)] bg-white'}`}
                   open={idx === 0}
                 >
                   <summary className="flex cursor-pointer list-none items-center justify-between gap-3">
@@ -2162,7 +2439,7 @@ function CourseDetailPage() {
                         {String(lesson.sort_order || idx + 1).padStart(2, '0')}.{' '}
                         {textOf(lesson.title, locale)}
                       </p>
-                      <p className="mt-1 text-xs text-[var(--muted)]">
+                      <p className={`mt-1 text-xs ${mutedText}`}>
                         {lesson.duration_seconds
                           ? `${Math.max(1, Math.round(lesson.duration_seconds / 60))} min`
                           : 'Approx. 10 min'}
@@ -2170,19 +2447,58 @@ function CourseDetailPage() {
                         {lesson.is_preview ? 'Preview available' : 'Members only'}
                       </p>
                     </div>
-                    <span className="text-lg leading-none transition group-open:rotate-45">+</span>
+                    <div className="flex items-center gap-2">
+                      {selectedLesson?.id === lesson.id ? (
+                        <span className={`rounded-full px-2 py-1 text-[10px] font-semibold uppercase ${isDark ? 'bg-white text-black' : 'bg-black text-white'}`}>Playing</span>
+                      ) : null}
+                      <span className="text-lg leading-none transition group-open:rotate-45">+</span>
+                    </div>
                   </summary>
                   <div className="mt-3 border-t border-[var(--line)] pt-3">
-                    <p className="text-sm leading-6 text-[var(--muted)]">
+                    <p className={`text-sm leading-6 ${mutedText}`}>
                       {textOf(lesson.description, locale) || 'Lesson description and key learning goals.'}
                     </p>
+                    {(lesson.materials ?? []).length ? (
+                      <div className="mt-3">
+                        <p className={`text-[11px] font-semibold uppercase tracking-[0.14em] ${mutedText}`}>Files</p>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {(lesson.materials ?? []).map((file: any, fileIdx: number) => (
+                            <a
+                              key={`${lesson.id}-file-${fileIdx}`}
+                              href={file.url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className={`rounded-full border px-3 py-1.5 text-[10px] font-semibold uppercase ${isDark ? 'border-white/12 bg-white/5 text-white' : 'border-[var(--line)]'}`}
+                            >
+                              {file.name || `File ${fileIdx + 1}`}
+                            </a>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
                     <div className="mt-3 flex gap-2">
                       <button
                         type="button"
-                        className="rounded-full border border-[var(--line)] px-3 py-1.5 text-[10px] font-semibold uppercase"
+                        onClick={() => {
+                          setSelectedLessonId(lesson.id)
+                          window.scrollTo({ top: 0, behavior: 'smooth' })
+                        }}
+                        className={`rounded-full px-3 py-1.5 text-[10px] font-semibold uppercase ${
+                          isDark ? 'bg-white text-black' : 'bg-black text-white'
+                        }`}
                       >
-                        {lesson.is_preview ? 'Watch preview' : 'Locked'}
+                        {lesson.video_url ? 'Open in player' : lesson.is_preview ? 'Open lesson' : 'Open lesson'}
                       </button>
+                      {lesson.video_url ? (
+                        <a
+                          href={lesson.video_url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className={`rounded-full border px-3 py-1.5 text-[10px] font-semibold uppercase ${isDark ? 'border-white/12 text-white' : 'border-[var(--line)]'}`}
+                        >
+                          Video file
+                        </a>
+                      ) : null}
                     </div>
                   </div>
                 </details>
@@ -2199,32 +2515,32 @@ function CourseDetailPage() {
                   className="h-[280px] w-full object-cover"
                 />
               </div>
-              <div className="rounded-[16px] border border-[var(--line)] bg-[var(--paper-2)] p-5">
-                <p className="text-[10px] font-semibold tracking-[0.16em] uppercase text-[var(--muted)]">
+              <div className={`rounded-[16px] border p-5 ${panelSoftClass}`}>
+                <p className={`text-[10px] font-semibold tracking-[0.16em] uppercase ${mutedText}`}>
                   Instructor
                 </p>
                 <h3 className="mt-2 text-2xl font-extrabold">{instructorName}</h3>
-                <p className="mt-2 text-sm text-[var(--muted)]">
+                <p className={`mt-2 text-sm ${mutedText}`}>
                   {course?.instructor?.headline || 'Expert instructor with a practical and structured teaching style.'}
                 </p>
                 <div className="mt-4 grid grid-cols-2 gap-3">
-                  <div className="rounded-[12px] bg-white p-3">
-                    <p className="text-xs text-[var(--muted)]">Rating</p>
+                  <div className={`rounded-[12px] p-3 ${isDark ? 'border border-white/10 bg-white/5' : 'bg-white'}`}>
+                    <p className={`text-xs ${mutedText}`}>Rating</p>
                     <p className="text-lg font-bold">{averageRating.toFixed(1)}/5</p>
                   </div>
-                  <div className="rounded-[12px] bg-white p-3">
-                    <p className="text-xs text-[var(--muted)]">Students</p>
+                  <div className={`rounded-[12px] p-3 ${isDark ? 'border border-white/10 bg-white/5' : 'bg-white'}`}>
+                    <p className={`text-xs ${mutedText}`}>Students</p>
                     <p className="text-lg font-bold">58,340+</p>
                   </div>
                 </div>
-                <p className="mt-4 text-sm leading-7 text-[#333]">
+                <p className={`mt-4 text-sm leading-7 ${isDark ? 'text-white/75' : 'text-[#333]'}`}>
                   This instructor page section mirrors marketplace course templates: profile summary,
                   credibility metrics, and direct access to all instructor courses.
                 </p>
                 <div className="mt-4 flex gap-2">
                   <Link
                     to={`/instructors/${course?.instructor?.id ?? 1}`}
-                    className="rounded-full bg-black px-4 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-white"
+                    className={`rounded-full px-4 py-2 text-xs font-semibold uppercase tracking-[0.14em] ${isDark ? 'bg-white text-black' : 'bg-black text-white'}`}
                   >
                     View instructor page
                   </Link>
@@ -2235,8 +2551,8 @@ function CourseDetailPage() {
 
           {activeTab === 'reviews' ? (
             <div className="grid gap-5 lg:grid-cols-[0.8fr_1.2fr]">
-              <div className="rounded-[16px] border border-[var(--line)] bg-[var(--paper-2)] p-5">
-                <p className="text-[10px] font-semibold tracking-[0.16em] uppercase text-[var(--muted)]">
+              <div className={`rounded-[16px] border p-5 ${panelSoftClass}`}>
+                <p className={`text-[10px] font-semibold tracking-[0.16em] uppercase ${mutedText}`}>
                   Student Rating
                 </p>
                 <p className="mt-2 text-4xl font-extrabold">{averageRating.toFixed(1)}</p>
@@ -2245,16 +2561,16 @@ function CourseDetailPage() {
                     <span key={idx}>{idx < Math.round(averageRating) ? '★' : '☆'}</span>
                   ))}
                 </div>
-                <p className="mt-2 text-sm text-[var(--muted)]">Based on {reviews.length} reviews</p>
+                <p className={`mt-2 text-sm ${mutedText}`}>Based on {reviews.length || 0} reviews</p>
                 <div className="mt-4 space-y-2">
                   {[5, 4, 3, 2, 1].map((stars) => {
                     const count = reviews.filter((r) => r.rating === stars).length
-                    const percent = (count / reviews.length) * 100
+                    const percent = reviews.length ? (count / reviews.length) * 100 : 0
                     return (
                       <div key={stars} className="grid grid-cols-[40px_1fr_34px] items-center gap-2 text-xs">
                         <span>{stars}★</span>
-                        <div className="h-2 rounded-full bg-white">
-                          <div className="h-full rounded-full bg-black" style={{ width: `${percent}%` }} />
+                        <div className={`h-2 rounded-full ${isDark ? 'bg-white/10' : 'bg-white'}`}>
+                          <div className={`h-full rounded-full ${isDark ? 'bg-white' : 'bg-black'}`} style={{ width: `${percent}%` }} />
                         </div>
                         <span className="text-right">{count}</span>
                       </div>
@@ -2263,23 +2579,27 @@ function CourseDetailPage() {
                 </div>
               </div>
               <div className="space-y-3">
-                {reviews.map((review) => (
+                {reviews.length ? reviews.map((review) => (
                   <article
                     key={review.id}
-                    className="rounded-[16px] border border-[var(--line)] bg-white p-4"
+                    className={`rounded-[16px] border p-4 ${isDark ? 'border-white/10 bg-white/5' : 'border-[var(--line)] bg-white'}`}
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <p className="text-sm font-semibold">{review.name}</p>
-                        <p className="text-xs text-[var(--muted)]">{review.role}</p>
+                        <p className={`text-xs ${mutedText}`}>{review.role}</p>
                       </div>
                       <p className="text-xs text-amber-500">
                         {Array.from({ length: 5 }).map((_, idx) => (idx < review.rating ? '★' : '☆')).join('')}
                       </p>
                     </div>
-                    <p className="mt-3 text-sm leading-6 text-[var(--muted)]">{review.text}</p>
+                    <p className={`mt-3 text-sm leading-6 ${mutedText}`}>{review.text}</p>
                   </article>
-                ))}
+                )) : (
+                  <div className={`rounded-[16px] border border-dashed p-4 text-sm ${isDark ? 'border-white/12 text-white/60' : 'border-[var(--line)] text-[var(--muted)]'}`}>
+                    No reviews yet. Reviews shown here are now loaded from the database only.
+                  </div>
+                )}
               </div>
             </div>
           ) : null}
@@ -2287,30 +2607,32 @@ function CourseDetailPage() {
       </section>
 
       <section className="mt-6 grid gap-6 lg:grid-cols-[1fr_1fr]">
-        <div className="rounded-[18px] border border-[var(--line)] bg-white p-5">
+        <div className={`rounded-[18px] border p-5 ${panelClass}`}>
           <h2 className="text-xl font-bold">Frequently Asked Questions</h2>
           <div className="mt-4 space-y-2">
-            {[
-              'Can I buy this course individually?',
-              'Will I get a certificate after completion?',
-              'Can I watch lessons on mobile devices?',
-              'Are Georgian, English and Russian supported?',
-            ].map((item, idx) => (
-              <details key={item} className="group rounded-[12px] border border-[var(--line)] px-4 py-3" open={idx === 0}>
+            {(course?.faqs?.length ? course.faqs : []).map((faq: any, idx: number) => {
+              const question = textOf(faq.question, locale)
+              const answer = textOf(faq.answer, locale)
+              return (
+              <details key={faq.id ?? question ?? idx} className={`group rounded-[12px] border px-4 py-3 ${isDark ? 'border-white/10 bg-white/5' : 'border-[var(--line)]'}`} open={idx === 0}>
                 <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-sm font-medium">
-                  <span>{item}</span>
+                  <span>{question}</span>
                   <span className="text-lg leading-none transition group-open:rotate-45">+</span>
                 </summary>
-                <p className="mt-3 text-sm leading-6 text-[var(--muted)]">
-                  Yes. The current platform supports course-level purchases with cart and checkout flow,
-                  and is prepared for Bank of Georgia payment gateway integration.
+                <p className={`mt-3 text-sm leading-6 ${mutedText}`}>
+                  {answer}
                 </p>
               </details>
-            ))}
+            )})}
+            {!course?.faqs?.length ? (
+              <div className={`rounded-[12px] border border-dashed px-4 py-3 text-sm ${isDark ? 'border-white/12 text-white/60' : 'border-[var(--line)] text-[var(--muted)]'}`}>
+                No FAQs yet. FAQs are now loaded from the database only.
+              </div>
+            ) : null}
           </div>
         </div>
 
-        <div className="rounded-[18px] border border-[var(--line)] bg-white p-5">
+        <div className={`rounded-[18px] border p-5 ${panelClass}`}>
           <h2 className="text-xl font-bold">Course Features</h2>
           <div className="mt-4 grid grid-cols-2 gap-3">
             {[
@@ -2321,8 +2643,8 @@ function CourseDetailPage() {
               ['Certificate', 'Included'],
               ['Support', 'Email'],
             ].map(([label, value]) => (
-              <div key={label} className="rounded-[12px] bg-[var(--paper-2)] p-3">
-                <p className="text-xs text-[var(--muted)]">{label}</p>
+              <div key={label} className={`rounded-[12px] p-3 ${isDark ? 'border border-white/10 bg-white/5' : 'bg-[var(--paper-2)]'}`}>
+                <p className={`text-xs ${mutedText}`}>{label}</p>
                 <p className="mt-1 text-sm font-semibold">{value}</p>
               </div>
             ))}
@@ -2330,7 +2652,7 @@ function CourseDetailPage() {
         </div>
       </section>
 
-      <section className="mt-6 rounded-[18px] border border-[var(--line)] bg-white p-5">
+      <section className={`mt-6 rounded-[18px] border p-5 ${panelClass}`}>
         <div className="mb-4 flex items-center justify-between gap-3">
           <div>
             <SectionLabel>Related courses</SectionLabel>
@@ -2338,14 +2660,14 @@ function CourseDetailPage() {
           </div>
           <Link
             to="/courses"
-            className="rounded-full border border-[var(--line)] px-4 py-2 text-xs font-semibold uppercase tracking-[0.14em]"
+            className={`rounded-full border px-4 py-2 text-xs font-semibold uppercase tracking-[0.14em] ${isDark ? 'border-white/12 text-white' : 'border-[var(--line)]'}`}
           >
             View catalog
           </Link>
         </div>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {(relatedCourses.length ? relatedCourses : (fallbackCourses as any)).slice(0, 4).map((item: any, idx: number) => (
-            <div key={item.id} className="overflow-hidden rounded-[14px] border border-[var(--line)] bg-[var(--paper-2)]">
+            <div key={item.id} className={`overflow-hidden rounded-[14px] border ${isDark ? 'border-white/10 bg-white/5' : 'border-[var(--line)] bg-[var(--paper-2)]'}`}>
               <Link to={`/courses/${item.slug}`}>
                 <img
                   src={item.cover_image_url || heroImages[idx % heroImages.length]}
@@ -2354,13 +2676,13 @@ function CourseDetailPage() {
                 />
               </Link>
               <div className="p-4">
-                <p className="text-[10px] tracking-[0.16em] text-[var(--muted)] uppercase">
+                <p className={`text-[10px] tracking-[0.16em] uppercase ${mutedText}`}>
                   {item.type}
                 </p>
                 <Link to={`/courses/${item.slug}`} className="mt-2 block text-sm font-bold leading-snug hover:underline">
                   {textOf(item.title, locale)}
                 </Link>
-                <p className="mt-1 text-xs text-[var(--muted)]">{item.instructor?.name || 'Happytality'}</p>
+                <p className={`mt-1 text-xs ${mutedText}`}>{item.instructor?.name || 'Happytality'}</p>
                 <div className="mt-3 flex items-center justify-between gap-2">
                   <span className="text-sm font-semibold">
                     {money(item.sale_price_amount ?? item.price_amount, item.currency || 'USD')}
@@ -2368,7 +2690,7 @@ function CourseDetailPage() {
                   <button
                     type="button"
                     onClick={() => void addToCart(item.id, 1)}
-                    className="rounded-full bg-black px-3 py-1.5 text-[10px] font-semibold text-white uppercase"
+                    className={`rounded-full px-3 py-1.5 text-[10px] font-semibold uppercase ${isDark ? 'bg-white text-black' : 'bg-black text-white'}`}
                   >
                     Add
                   </button>
@@ -2382,14 +2704,6 @@ function CourseDetailPage() {
       <Footer />
     </>
   )
-}
-
-function sampleLessons() {
-  return [
-    { id: 1, sort_order: 1, title: { en: 'Introduction', ru: 'Введение', ka: 'შესავალი' }, description: { en: 'Course overview and goals.' }, is_preview: true },
-    { id: 2, sort_order: 2, title: { en: 'Framework', ru: 'Фреймворк', ka: 'ფრეიმვორკი' }, description: { en: 'Core process and examples.' }, is_preview: false },
-    { id: 3, sort_order: 3, title: { en: 'Execution', ru: 'Практика', ka: 'პრაქტიკა' }, description: { en: 'Apply the system step by step.' }, is_preview: false },
-  ]
 }
 
 function AboutPage() {
@@ -2456,7 +2770,7 @@ function GoogleMark() {
 }
 
 function AuthScreen({ mode }: { mode: 'login' | 'register' }) {
-  const { login, register, authBusy, user, locale } = useApp()
+  const { login, register, authBusy, user, locale, theme } = useApp()
   const navigate = useNavigate()
   const [error, setError] = useState<string | null>(null)
   const [info, setInfo] = useState<string | null>(null)
@@ -2494,6 +2808,7 @@ function AuthScreen({ mode }: { mode: 'login' | 'register' }) {
   }
 
   const isLogin = mode === 'login'
+  const isDark = theme === 'dark'
   const authHeroBg = isLogin
     ? 'linear-gradient(140deg, rgba(123,112,106,0.88) 0%, #10131a 45%, rgba(58,111,149,0.55) 100%)'
     : 'linear-gradient(140deg, rgba(139,67,53,0.9) 0%, #11131b 42%, rgba(77,102,49,0.52) 100%)'
@@ -2582,29 +2897,33 @@ function AuthScreen({ mode }: { mode: 'login' | 'register' }) {
         </div>
 
         <div className="relative">
-          <div className="rounded-[26px] border border-[var(--line)] bg-white p-5 shadow-[0_35px_70px_-45px_rgba(0,0,0,0.4)] sm:p-7">
+          <div
+            className={`rounded-[26px] border p-5 shadow-[0_35px_70px_-45px_rgba(0,0,0,0.4)] sm:p-7 ${
+              isDark ? 'border-white/10 bg-[#0b1018]/92 text-white backdrop-blur-xl' : 'border-[var(--line)] bg-white'
+            }`}
+          >
             <div className="flex items-center justify-between gap-3">
               <div>
-                <p className="text-[10px] font-semibold tracking-[0.18em] text-[var(--muted)] uppercase">
+                <p className={`text-[10px] font-semibold tracking-[0.18em] uppercase ${isDark ? 'text-white/55' : 'text-[var(--muted)]'}`}>
                   {isLogin ? 'Sign in' : 'Sign up'}
                 </p>
                 <h2 className="mt-2 text-3xl font-extrabold tracking-tight">
                   {isLogin ? 'Login to Happytality' : 'Create your Happytality account'}
                 </h2>
-                <p className="mt-2 text-sm text-[var(--muted)]">
+                <p className={`mt-2 text-sm ${isDark ? 'text-white/65' : 'text-[var(--muted)]'}`}>
                   {isLogin ? 'Access your dashboard and continue your learning.' : 'Choose a role and start using the platform.'}
                 </p>
               </div>
-              <div className="hidden sm:flex rounded-full border border-[var(--line)] bg-[var(--paper-2)] p-1">
+              <div className={`hidden sm:flex rounded-full p-1 ${isDark ? 'border border-white/10 bg-white/5' : 'border border-[var(--line)] bg-[var(--paper-2)]'}`}>
                 <Link
                   to="/auth/login"
-                  className={`rounded-full px-3 py-2 text-xs font-semibold ${isLogin ? 'bg-[var(--brand-blue)] text-white' : ''}`}
+                  className={`rounded-full px-3 py-2 text-xs font-semibold ${isLogin ? 'bg-[var(--brand-blue)] text-white' : isDark ? 'text-white/80' : ''}`}
                 >
                   Login
                 </Link>
                 <Link
                   to="/auth/register"
-                  className={`rounded-full px-3 py-2 text-xs font-semibold ${!isLogin ? 'bg-[var(--brand-rust)] text-white' : ''}`}
+                  className={`rounded-full px-3 py-2 text-xs font-semibold ${!isLogin ? 'bg-[var(--brand-rust)] text-white' : isDark ? 'text-white/80' : ''}`}
                 >
                   Register
                 </Link>
@@ -2617,16 +2936,20 @@ function AuthScreen({ mode }: { mode: 'login' | 'register' }) {
                 setError(null)
                 setInfo('Google sign-in UI is added. Backend OAuth redirect/callback endpoint is the next step.')
               }}
-              className="mt-6 flex w-full items-center justify-center gap-2 rounded-[14px] border border-[var(--line)] bg-white px-4 py-3 text-sm font-semibold hover:bg-[var(--brand-cream)]"
+              className={`mt-6 flex w-full items-center justify-center gap-2 rounded-[14px] border px-4 py-3 text-sm font-semibold ${
+                isDark
+                  ? 'border-white/15 bg-white/5 text-white hover:bg-white/10'
+                  : 'border-[var(--line)] bg-white hover:bg-[var(--brand-cream)]'
+              }`}
             >
               <GoogleMark />
               {isLogin ? 'Continue with Google' : 'Sign up with Google'}
             </button>
 
             <div className="my-5 flex items-center gap-3">
-              <div className="h-px flex-1 bg-[var(--line)]" />
-              <span className="text-[10px] font-semibold tracking-[0.16em] text-[var(--muted)] uppercase">or</span>
-              <div className="h-px flex-1 bg-[var(--line)]" />
+              <div className={`h-px flex-1 ${isDark ? 'bg-white/10' : 'bg-[var(--line)]'}`} />
+              <span className={`text-[10px] font-semibold tracking-[0.16em] uppercase ${isDark ? 'text-white/45' : 'text-[var(--muted)]'}`}>or</span>
+              <div className={`h-px flex-1 ${isDark ? 'bg-white/10' : 'bg-[var(--line)]'}`} />
             </div>
 
             <form onSubmit={submit} className="grid gap-3 sm:grid-cols-2">
@@ -2635,7 +2958,11 @@ function AuthScreen({ mode }: { mode: 'login' | 'register' }) {
                   value={form.name}
                   onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
                   placeholder="Full name"
-                  className="rounded-[14px] border border-[var(--line)] bg-[var(--paper-2)] px-4 py-3 text-sm outline-none focus:border-[var(--brand-blue)]"
+                  className={`rounded-[14px] border px-4 py-3 text-sm outline-none ${
+                    isDark
+                      ? 'border-white/12 bg-white/5 text-white placeholder:text-white/35 focus:border-[var(--brand-blue)]'
+                      : 'border-[var(--line)] bg-[var(--paper-2)] focus:border-[var(--brand-blue)]'
+                  }`}
                 />
               ) : null}
 
@@ -2644,7 +2971,11 @@ function AuthScreen({ mode }: { mode: 'login' | 'register' }) {
                 onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
                 placeholder="Email address"
                 type="email"
-                className={`rounded-[14px] border border-[var(--line)] bg-[var(--paper-2)] px-4 py-3 text-sm outline-none focus:border-[var(--brand-blue)] ${isLogin ? 'sm:col-span-2' : ''}`}
+                className={`rounded-[14px] border px-4 py-3 text-sm outline-none ${
+                  isDark
+                    ? 'border-white/12 bg-white/5 text-white placeholder:text-white/35 focus:border-[var(--brand-blue)]'
+                    : 'border-[var(--line)] bg-[var(--paper-2)] focus:border-[var(--brand-blue)]'
+                } ${isLogin ? 'sm:col-span-2' : ''}`}
               />
 
               <input
@@ -2652,7 +2983,11 @@ function AuthScreen({ mode }: { mode: 'login' | 'register' }) {
                 value={form.password}
                 onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
                 placeholder="Password"
-                className="rounded-[14px] border border-[var(--line)] bg-[var(--paper-2)] px-4 py-3 text-sm outline-none focus:border-[var(--brand-blue)]"
+                className={`rounded-[14px] border px-4 py-3 text-sm outline-none ${
+                  isDark
+                    ? 'border-white/12 bg-white/5 text-white placeholder:text-white/35 focus:border-[var(--brand-blue)]'
+                    : 'border-[var(--line)] bg-[var(--paper-2)] focus:border-[var(--brand-blue)]'
+                }`}
               />
 
               {!isLogin ? (
@@ -2661,12 +2996,18 @@ function AuthScreen({ mode }: { mode: 'login' | 'register' }) {
                   value={form.password_confirmation}
                   onChange={(e) => setForm((f) => ({ ...f, password_confirmation: e.target.value }))}
                   placeholder="Confirm password"
-                  className="rounded-[14px] border border-[var(--line)] bg-[var(--paper-2)] px-4 py-3 text-sm outline-none focus:border-[var(--brand-blue)]"
+                  className={`rounded-[14px] border px-4 py-3 text-sm outline-none ${
+                    isDark
+                      ? 'border-white/12 bg-white/5 text-white placeholder:text-white/35 focus:border-[var(--brand-blue)]'
+                      : 'border-[var(--line)] bg-[var(--paper-2)] focus:border-[var(--brand-blue)]'
+                  }`}
                 />
               ) : (
                 <button
                   type="button"
-                  className="rounded-[14px] border border-[var(--line)] bg-white px-4 py-3 text-sm font-semibold hover:bg-[var(--paper-2)]"
+                  className={`rounded-[14px] border px-4 py-3 text-sm font-semibold ${
+                    isDark ? 'border-white/15 bg-white/5 text-white hover:bg-white/10' : 'border-[var(--line)] bg-white hover:bg-[var(--paper-2)]'
+                  }`}
                 >
                   Forgot password
                 </button>
@@ -2677,19 +3018,23 @@ function AuthScreen({ mode }: { mode: 'login' | 'register' }) {
                   <select
                     value={form.role}
                     onChange={(e) => setForm((f) => ({ ...f, role: e.target.value }))}
-                    className="rounded-[14px] border border-[var(--line)] bg-[var(--paper-2)] px-4 py-3 text-sm outline-none focus:border-[var(--brand-blue)]"
+                    className={`rounded-[14px] border px-4 py-3 text-sm outline-none ${
+                      isDark
+                        ? 'border-white/12 bg-white/5 text-white focus:border-[var(--brand-blue)]'
+                        : 'border-[var(--line)] bg-[var(--paper-2)] focus:border-[var(--brand-blue)]'
+                    }`}
                   >
                     <option value="student">Student</option>
                     <option value="instructor">Instructor</option>
                   </select>
-                  <div className="rounded-[14px] border border-[var(--line)] bg-[var(--paper-2)] px-4 py-3 text-sm text-[var(--muted)]">
+                  <div className={`rounded-[14px] border px-4 py-3 text-sm ${isDark ? 'border-white/12 bg-white/5 text-white/70' : 'border-[var(--line)] bg-[var(--paper-2)] text-[var(--muted)]'}`}>
                     Language: {locale.toUpperCase()}
                   </div>
                 </div>
               ) : null}
 
               {error ? <p className="sm:col-span-2 text-sm text-red-600">{error}</p> : null}
-              {info ? <p className="sm:col-span-2 text-sm text-[var(--muted)]">{info}</p> : null}
+              {info ? <p className={`sm:col-span-2 text-sm ${isDark ? 'text-white/65' : 'text-[var(--muted)]'}`}>{info}</p> : null}
 
               <button
                 disabled={authBusy}
@@ -2698,11 +3043,13 @@ function AuthScreen({ mode }: { mode: 'login' | 'register' }) {
                 {authBusy ? 'Please wait...' : isLogin ? 'Login' : 'Create account'}
               </button>
 
-              <div className="sm:col-span-2 rounded-[14px] border border-[var(--line)] bg-[var(--paper-2)] px-4 py-3 text-xs text-[var(--muted)]">
+              <div className={`sm:col-span-2 rounded-[14px] border px-4 py-3 text-xs ${
+                isDark ? 'border-white/12 bg-white/5 text-white/65' : 'border-[var(--line)] bg-[var(--paper-2)] text-[var(--muted)]'
+              }`}>
                 {isLogin ? (
                   <>
                     New here?{' '}
-                    <Link to="/auth/register" className="font-semibold text-black underline">
+                    <Link to="/auth/register" className={`font-semibold underline ${isDark ? 'text-white' : 'text-black'}`}>
                       Create an account
                     </Link>{' '}
                     as student or instructor.
@@ -2710,7 +3057,7 @@ function AuthScreen({ mode }: { mode: 'login' | 'register' }) {
                 ) : (
                   <>
                     Already have an account?{' '}
-                    <Link to="/auth/login" className="font-semibold text-black underline">
+                    <Link to="/auth/login" className={`font-semibold underline ${isDark ? 'text-white' : 'text-black'}`}>
                       Login
                     </Link>
                     .
@@ -2720,7 +3067,7 @@ function AuthScreen({ mode }: { mode: 'login' | 'register' }) {
             </form>
           </div>
 
-          <div className="mt-4 rounded-[18px] border border-[var(--line)] bg-white p-4 text-xs text-[var(--muted)]">
+          <div className={`mt-4 rounded-[18px] border p-4 text-xs ${isDark ? 'border-white/10 bg-white/5 text-white/55' : 'border-[var(--line)] bg-white text-[var(--muted)]'}`}>
             Demo password format is already seeded in the backend. Use the demo users from the left panel for quick testing.
           </div>
         </div>
@@ -2741,28 +3088,38 @@ function DashboardTabLink({
   onClick: () => void
   badge?: string | number
 }) {
+  const { theme } = useApp()
+  const isDark = theme === 'dark'
   return (
     <button
       type="button"
       onClick={onClick}
       className={`flex w-full items-center justify-between rounded-[12px] px-3 py-2.5 text-left text-sm font-medium ${
-        active ? 'bg-black text-white' : 'hover:bg-[var(--paper-2)]'
+        active ? (isDark ? 'bg-white text-black' : 'bg-black text-white') : isDark ? 'text-white hover:bg-white/5' : 'hover:bg-[var(--paper-2)]'
       }`}
     >
       <span>{label}</span>
       {badge !== undefined ? (
-        <span className={`rounded-full px-2 py-0.5 text-[10px] ${active ? 'bg-white/15' : 'bg-[var(--paper-2)]'}`}>{badge}</span>
+        <span
+          className={`rounded-full px-2 py-0.5 text-[10px] ${
+            active ? (isDark ? 'bg-black/10 text-black' : 'bg-white/15') : isDark ? 'bg-white/10 text-white' : 'bg-[var(--paper-2)]'
+          }`}
+        >
+          {badge}
+        </span>
       ) : null}
     </button>
   )
 }
 
 function DashboardMetricCard({ label, value, hint }: { label: string; value: string | number; hint?: string }) {
+  const { theme } = useApp()
+  const isDark = theme === 'dark'
   return (
-    <div className="rounded-[14px] border border-[var(--line)] bg-white p-4">
-      <p className="text-[11px] uppercase tracking-[0.14em] text-[var(--muted)]">{label}</p>
+    <div className={`rounded-[14px] border p-4 ${isDark ? 'border-white/10 bg-[#0c111a]/92 text-white' : 'border-[var(--line)] bg-white'}`}>
+      <p className={`text-[11px] uppercase tracking-[0.14em] ${isDark ? 'text-white/55' : 'text-[var(--muted)]'}`}>{label}</p>
       <p className="mt-2 text-2xl font-extrabold">{value}</p>
-      {hint ? <p className="mt-1 text-xs text-[var(--muted)]">{hint}</p> : null}
+      {hint ? <p className={`mt-1 text-xs ${isDark ? 'text-white/60' : 'text-[var(--muted)]'}`}>{hint}</p> : null}
     </div>
   )
 }
@@ -2774,6 +3131,8 @@ function MessageCenter({
   role: 'student' | 'instructor' | 'admin' | string
   embedded?: boolean
 }) {
+  const { theme } = useApp()
+  const isDark = theme === 'dark'
   const threads = useMemo(() => getDemoThreads(role), [role])
   const [selectedId, setSelectedId] = useState<string>(threads[0]?.id ?? '')
   const [sortMode, setSortMode] = useState<'newest' | 'unread'>('newest')
@@ -2785,16 +3144,16 @@ function MessageCenter({
 
   return (
     <div className={`grid gap-4 ${embedded ? 'xl:grid-cols-[320px_1fr]' : 'lg:grid-cols-[340px_1fr]'}`}>
-      <div className="rounded-[16px] border border-[var(--line)] bg-white p-4">
+      <div className={`rounded-[16px] border p-4 ${isDark ? 'border-white/10 bg-[#0c111a]/92 text-white' : 'border-[var(--line)] bg-white'}`}>
         <div className="mb-3 flex items-center justify-between gap-2">
           <div>
-            <p className="text-xs font-semibold tracking-[0.16em] uppercase text-[var(--muted)]">Messages</p>
+            <p className={`text-xs font-semibold tracking-[0.16em] uppercase ${isDark ? 'text-white/55' : 'text-[var(--muted)]'}`}>Messages</p>
             <h3 className="text-lg font-bold">Inbox</h3>
           </div>
           <select
             value={sortMode}
             onChange={(e) => setSortMode(e.target.value as 'newest' | 'unread')}
-            className="rounded-[10px] border border-[var(--line)] px-2 py-1 text-xs"
+            className={`rounded-[10px] border px-2 py-1 text-xs ${isDark ? 'border-white/12 bg-white/5 text-white' : 'border-[var(--line)]'}`}
           >
             <option value="newest">Newest</option>
             <option value="unread">Unread first</option>
@@ -2807,34 +3166,40 @@ function MessageCenter({
               type="button"
               onClick={() => setSelectedId(thread.id)}
               className={`w-full rounded-[12px] border p-3 text-left ${
-                activeThread?.id === thread.id ? 'border-black bg-[var(--paper-2)]' : 'border-[var(--line)] bg-white'
+                activeThread?.id === thread.id
+                  ? isDark
+                    ? 'border-white/20 bg-white/8'
+                    : 'border-black bg-[var(--paper-2)]'
+                  : isDark
+                    ? 'border-white/10 bg-white/5'
+                    : 'border-[var(--line)] bg-white'
               }`}
             >
               <div className="flex items-start justify-between gap-2">
                 <p className="text-sm font-semibold leading-tight">{thread.title}</p>
                 {thread.unread ? <span className="rounded-full bg-[var(--brand)] px-2 py-0.5 text-[10px] font-semibold text-white">{thread.unread}</span> : null}
               </div>
-              <p className="mt-1 line-clamp-1 text-xs text-[var(--muted)]">{thread.course}</p>
-              <p className="mt-2 line-clamp-1 text-xs text-[var(--muted)]">{thread.participants.join(' · ')}</p>
-              <p className="mt-1 text-[11px] text-[var(--muted)]">{thread.updatedAt}</p>
+              <p className={`mt-1 line-clamp-1 text-xs ${isDark ? 'text-white/60' : 'text-[var(--muted)]'}`}>{thread.course}</p>
+              <p className={`mt-2 line-clamp-1 text-xs ${isDark ? 'text-white/60' : 'text-[var(--muted)]'}`}>{thread.participants.join(' · ')}</p>
+              <p className={`mt-1 text-[11px] ${isDark ? 'text-white/50' : 'text-[var(--muted)]'}`}>{thread.updatedAt}</p>
             </button>
           ))}
         </div>
       </div>
 
-      <div className="rounded-[16px] border border-[var(--line)] bg-white">
+      <div className={`rounded-[16px] border ${isDark ? 'border-white/10 bg-[#0c111a]/92 text-white' : 'border-[var(--line)] bg-white'}`}>
         {activeThread ? (
           <>
             <div className="border-b border-[var(--line)] p-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <p className="text-lg font-bold">{activeThread.title}</p>
-                  <p className="mt-1 text-xs text-[var(--muted)]">{activeThread.course} · {activeThread.participants.join(' · ')}</p>
+                  <p className={`mt-1 text-xs ${isDark ? 'text-white/60' : 'text-[var(--muted)]'}`}>{activeThread.course} · {activeThread.participants.join(' · ')}</p>
                 </div>
                 <div className="flex gap-2 text-xs">
-                  <button type="button" className="rounded-full border border-[var(--line)] px-3 py-2">Q&A</button>
-                  <button type="button" className="rounded-full border border-[var(--line)] px-3 py-2">Assignments</button>
-                  <button type="button" className="rounded-full border border-[var(--line)] px-3 py-2">Escalate to admin</button>
+                  <button type="button" className={`rounded-full border px-3 py-2 ${isDark ? 'border-white/12 bg-white/5' : 'border-[var(--line)]'}`}>Q&A</button>
+                  <button type="button" className={`rounded-full border px-3 py-2 ${isDark ? 'border-white/12 bg-white/5' : 'border-[var(--line)]'}`}>Assignments</button>
+                  <button type="button" className={`rounded-full border px-3 py-2 ${isDark ? 'border-white/12 bg-white/5' : 'border-[var(--line)]'}`}>Escalate to admin</button>
                 </div>
               </div>
             </div>
@@ -2846,30 +3211,30 @@ function MessageCenter({
                   (role === 'admin' && msg.role === 'admin')
                 return (
                   <div key={msg.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
-                    <div className={`max-w-[85%] rounded-[14px] border px-3 py-2 ${isMe ? 'border-black bg-black text-white' : 'border-[var(--line)] bg-[var(--paper-2)]'}`}>
-                      <p className={`text-[11px] font-semibold uppercase tracking-[0.12em] ${isMe ? 'text-white/75' : 'text-[var(--muted)]'}`}>
+                    <div className={`max-w-[85%] rounded-[14px] border px-3 py-2 ${isMe ? (isDark ? 'border-white bg-white text-black' : 'border-black bg-black text-white') : isDark ? 'border-white/10 bg-white/5 text-white' : 'border-[var(--line)] bg-[var(--paper-2)]'}`}>
+                      <p className={`text-[11px] font-semibold uppercase tracking-[0.12em] ${isMe ? (isDark ? 'text-black/65' : 'text-white/75') : isDark ? 'text-white/55' : 'text-[var(--muted)]'}`}>
                         {msg.author} · {msg.role}
                       </p>
                       <p className="mt-1 text-sm leading-6">{msg.text}</p>
-                      <p className={`mt-1 text-[11px] ${isMe ? 'text-white/70' : 'text-[var(--muted)]'}`}>{msg.time}</p>
+                      <p className={`mt-1 text-[11px] ${isMe ? (isDark ? 'text-black/60' : 'text-white/70') : isDark ? 'text-white/50' : 'text-[var(--muted)]'}`}>{msg.time}</p>
                     </div>
                   </div>
                 )
               })}
             </div>
             <div className="border-t border-[var(--line)] p-4">
-              <div className="rounded-[14px] border border-[var(--line)] bg-[var(--paper-2)] p-3">
+              <div className={`rounded-[14px] border p-3 ${isDark ? 'border-white/10 bg-white/5' : 'border-[var(--line)] bg-[var(--paper-2)]'}`}>
                 <textarea
                   rows={3}
                   placeholder="Write a message (MVP UI; backend realtime/thread persistence next step)"
-                  className="w-full resize-none bg-transparent text-sm outline-none placeholder:text-[var(--muted)]"
+                  className={`w-full resize-none bg-transparent text-sm outline-none ${isDark ? 'text-white placeholder:text-white/40' : 'placeholder:text-[var(--muted)]'}`}
                 />
                 <div className="mt-2 flex items-center justify-between gap-3">
                   <div className="flex gap-2 text-xs">
-                    <button type="button" className="rounded-full border border-[var(--line)] bg-white px-3 py-2">Attach</button>
-                    <button type="button" className="rounded-full border border-[var(--line)] bg-white px-3 py-2">Homework</button>
+                    <button type="button" className={`rounded-full border px-3 py-2 ${isDark ? 'border-white/12 bg-white/5 text-white' : 'border-[var(--line)] bg-white'}`}>Attach</button>
+                    <button type="button" className={`rounded-full border px-3 py-2 ${isDark ? 'border-white/12 bg-white/5 text-white' : 'border-[var(--line)] bg-white'}`}>Homework</button>
                   </div>
-                  <button type="button" className="rounded-full bg-black px-4 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-white">
+                  <button type="button" className={`rounded-full px-4 py-2 text-xs font-semibold uppercase tracking-[0.14em] ${isDark ? 'bg-white text-black' : 'bg-black text-white'}`}>
                     Send
                   </button>
                 </div>
@@ -2877,7 +3242,7 @@ function MessageCenter({
             </div>
           </>
         ) : (
-          <div className="p-6 text-sm text-[var(--muted)]">No messages yet.</div>
+          <div className={`p-6 text-sm ${isDark ? 'text-white/60' : 'text-[var(--muted)]'}`}>No messages yet.</div>
         )}
       </div>
     </div>
@@ -2901,7 +3266,7 @@ function MessagesPage() {
 }
 
 function UserProfilePage() {
-  const { token, user, locale, setLocale } = useApp()
+  const { token, user, locale, setLocale, theme } = useApp()
   const [params, setParams] = useSearchParams()
   const [profile, setProfile] = useState<any>(null)
   const [form, setForm] = useState<any>({})
@@ -2938,37 +3303,44 @@ function UserProfilePage() {
     { id: 'messages', label: 'Messages', badge: 1 },
     { id: 'settings', label: 'Settings' },
   ]
+  const isDark = theme === 'dark'
+  const cardClass = isDark ? 'border-white/10 bg-[#0c111a]/92 text-white' : 'border-[var(--line)] bg-white'
+  const softCardClass = isDark ? 'border-white/10 bg-white/5 text-white' : 'bg-[var(--paper-2)]'
+  const inputClass = isDark ? 'border-white/12 bg-white/5 text-white placeholder:text-white/35' : 'border-[var(--line)]'
+  const mutedText = isDark ? 'text-white/60' : 'text-[var(--muted)]'
+  const solidBtnClass = isDark ? 'bg-white text-black' : 'bg-black text-white'
+  const outlineBtnClass = isDark ? 'border-white/12 bg-white/5 text-white' : 'border-[var(--line)]'
 
   return (
     <>
       <PageSection title="Student Dashboard" subtitle="My learning, payments, reminders, messages and account settings." />
       <div className="grid gap-6 xl:grid-cols-[290px_1fr]">
         <aside className="space-y-4">
-          <div className="rounded-[18px] border border-[var(--line)] bg-white p-4">
+          <div className={`rounded-[18px] border p-4 ${cardClass}`}>
             <div className="flex items-center gap-3">
               <div className="grid size-14 place-items-center rounded-full bg-[#101218] text-lg font-bold text-white">
                 {initials(user.name)}
               </div>
               <div className="min-w-0">
                 <p className="truncate text-base font-semibold">{user.name}</p>
-                <p className="truncate text-xs text-[var(--muted)]">{user.email}</p>
-                <p className="mt-1 text-[10px] uppercase tracking-[0.14em] text-[var(--muted)]">{user.role}</p>
+                <p className={`truncate text-xs ${mutedText}`}>{user.email}</p>
+                <p className={`mt-1 text-[10px] uppercase tracking-[0.14em] ${mutedText}`}>{user.role}</p>
               </div>
             </div>
             <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
-              <div className="rounded-[10px] bg-[var(--paper-2)] p-3">
-                <p className="text-[var(--muted)]">Active</p>
+              <div className={`rounded-[10px] p-3 ${softCardClass}`}>
+                <p className={mutedText}>Active</p>
                 <p className="mt-1 text-lg font-bold">{activeOrders.length}</p>
               </div>
-              <div className="rounded-[10px] bg-[var(--paper-2)] p-3">
-                <p className="text-[var(--muted)]">Completed</p>
+              <div className={`rounded-[10px] p-3 ${softCardClass}`}>
+                <p className={mutedText}>Completed</p>
                 <p className="mt-1 text-lg font-bold">{completedOrders.length}</p>
               </div>
             </div>
           </div>
 
-          <div className="rounded-[18px] border border-[var(--line)] bg-white p-3">
-            <p className="px-2 pb-2 text-[10px] font-semibold tracking-[0.16em] uppercase text-[var(--muted)]">Dashboard</p>
+          <div className={`rounded-[18px] border p-3 ${cardClass}`}>
+            <p className={`px-2 pb-2 text-[10px] font-semibold tracking-[0.16em] uppercase ${mutedText}`}>Dashboard</p>
             <div className="space-y-1">
               {dashboardTabs.map((tab) => (
                 <DashboardTabLink
@@ -2986,12 +3358,12 @@ function UserProfilePage() {
             </div>
           </div>
 
-          <div className="rounded-[18px] border border-[var(--line)] bg-white p-4">
+          <div className={`rounded-[18px] border p-4 ${cardClass}`}>
             <p className="text-xs font-semibold tracking-[0.16em] uppercase">Upcoming</p>
             <div className="mt-3 space-y-2 text-xs">
-              <div className="rounded-[10px] bg-[var(--paper-2)] p-3">Homework review pending · 1 item</div>
-              <div className="rounded-[10px] bg-[var(--paper-2)] p-3">Live webinar reminder · tomorrow 20:00</div>
-              <div className="rounded-[10px] bg-[var(--paper-2)] p-3">Payment receipt available · last order</div>
+              <div className={`rounded-[10px] p-3 ${softCardClass}`}>Homework review pending · 1 item</div>
+              <div className={`rounded-[10px] p-3 ${softCardClass}`}>Live webinar reminder · tomorrow 20:00</div>
+              <div className={`rounded-[10px] p-3 ${softCardClass}`}>Payment receipt available · last order</div>
             </div>
           </div>
         </aside>
@@ -3006,7 +3378,7 @@ function UserProfilePage() {
 
           {activeTab === 'overview' ? (
             <div className="grid gap-5 xl:grid-cols-[1.1fr_0.9fr]">
-              <div className="rounded-[18px] border border-[var(--line)] bg-white p-5">
+              <div className={`rounded-[18px] border p-5 ${cardClass}`}>
                 <div className="flex items-center justify-between gap-3">
                   <h2 className="text-lg font-bold">Continue learning</h2>
                   <button type="button" onClick={() => setParams({ tab: 'learning' })} className="text-xs font-semibold text-[var(--brand)]">
@@ -3015,29 +3387,29 @@ function UserProfilePage() {
                 </div>
                 <div className="mt-4 space-y-3">
                   {(activeOrders.length ? activeOrders : orders).slice(0, 3).map((order: any) => (
-                    <div key={order.id} className="rounded-[14px] border border-[var(--line)] p-4">
+                    <div key={order.id} className={`rounded-[14px] border p-4 ${isDark ? 'border-white/10 bg-white/5' : 'border-[var(--line)]'}`}>
                       <div className="flex items-start justify-between gap-3">
                         <div>
                           <p className="text-sm font-semibold">{textOf(order.course?.title, locale) || `Course #${order.course_id}`}</p>
-                          <p className="mt-1 text-xs text-[var(--muted)]">
+                          <p className={`mt-1 text-xs ${mutedText}`}>
                             {order.payment_status} · {order.enrollment_status}
                           </p>
                         </div>
-                        <Link to={`/courses/${order.course?.slug || ''}`} className="rounded-full border border-[var(--line)] px-3 py-1.5 text-[10px] font-semibold uppercase">
+                        <Link to={`/courses/${order.course?.slug || ''}`} className={`rounded-full border px-3 py-1.5 text-[10px] font-semibold uppercase ${outlineBtnClass}`}>
                           Continue
                         </Link>
                       </div>
-                      <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100">
+                      <div className={`mt-3 h-2 overflow-hidden rounded-full ${isDark ? 'bg-white/10' : 'bg-slate-100'}`}>
                         <div className="h-full bg-[var(--brand)]" style={{ width: `${order.progress_percent ?? 0}%` }} />
                       </div>
-                      <p className="mt-2 text-xs text-[var(--muted)]">{order.progress_percent ?? 0}% completed</p>
+                      <p className={`mt-2 text-xs ${mutedText}`}>{order.progress_percent ?? 0}% completed</p>
                     </div>
                   ))}
                 </div>
               </div>
 
               <div className="space-y-5">
-                <div className="rounded-[18px] border border-[var(--line)] bg-white p-5">
+                <div className={`rounded-[18px] border p-5 ${cardClass}`}>
                   <h2 className="text-lg font-bold">Reminders & tasks</h2>
                   <div className="mt-4 space-y-2 text-sm">
                     {[
@@ -3046,17 +3418,17 @@ function UserProfilePage() {
                       'Review feedback from mentor available',
                       'Resume lesson 03 where you stopped',
                     ].map((item) => (
-                      <div key={item} className="rounded-[12px] bg-[var(--paper-2)] px-3 py-2">{item}</div>
+                      <div key={item} className={`rounded-[12px] px-3 py-2 ${softCardClass}`}>{item}</div>
                     ))}
                   </div>
                 </div>
-                <div className="rounded-[18px] border border-[var(--line)] bg-white p-5">
+                <div className={`rounded-[18px] border p-5 ${cardClass}`}>
                   <h2 className="text-lg font-bold">Folders (Watch later)</h2>
                   <div className="mt-4 grid gap-2 text-sm">
                     {['Healing Path', 'Retreats to decide', 'Webinars this month'].map((folder) => (
-                      <div key={folder} className="flex items-center justify-between rounded-[12px] border border-[var(--line)] px-3 py-2">
+                      <div key={folder} className={`flex items-center justify-between rounded-[12px] border px-3 py-2 ${outlineBtnClass}`}>
                         <span>{folder}</span>
-                        <span className="text-xs text-[var(--muted)]">{Math.ceil(Math.random() * 4)} items</span>
+                        <span className={`text-xs ${mutedText}`}>{Math.ceil(Math.random() * 4)} items</span>
                       </div>
                     ))}
                   </div>
@@ -3066,12 +3438,12 @@ function UserProfilePage() {
           ) : null}
 
           {activeTab === 'learning' ? (
-            <div className="rounded-[18px] border border-[var(--line)] bg-white p-5">
+            <div className={`rounded-[18px] border p-5 ${cardClass}`}>
               <h2 className="text-lg font-bold">My learning</h2>
               <div className="mt-4 space-y-3">
                 {orders.length ? (
                   orders.map((order: any, idx: number) => (
-                    <div key={order.id} className="rounded-[14px] border border-[var(--line)] p-4">
+                    <div key={order.id} className={`rounded-[14px] border p-4 ${isDark ? 'border-white/10 bg-white/5' : 'border-[var(--line)]'}`}>
                       <div className="flex flex-col gap-4 sm:flex-row">
                         <img
                           src={order.course?.cover_image_url || heroImages[idx % heroImages.length]}
@@ -3082,25 +3454,25 @@ function UserProfilePage() {
                           <div className="flex flex-wrap items-start justify-between gap-3">
                             <div>
                               <p className="text-base font-semibold">{textOf(order.course?.title, locale) || `Course #${order.course_id}`}</p>
-                              <p className="mt-1 text-xs text-[var(--muted)]">
+                              <p className={`mt-1 text-xs ${mutedText}`}>
                                 {order.course?.instructor?.name || 'Happytality'} · {order.enrollment_status}
                               </p>
                             </div>
-                            <span className="rounded-full bg-[var(--paper-2)] px-3 py-1 text-xs font-semibold">
+                            <span className={`rounded-full px-3 py-1 text-xs font-semibold ${softCardClass}`}>
                               {order.progress_percent ?? 0}% done
                             </span>
                           </div>
-                          <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100">
-                            <div className="h-full bg-black" style={{ width: `${order.progress_percent ?? 0}%` }} />
+                          <div className={`mt-3 h-2 overflow-hidden rounded-full ${isDark ? 'bg-white/10' : 'bg-slate-100'}`}>
+                            <div className={`h-full ${isDark ? 'bg-white' : 'bg-black'}`} style={{ width: `${order.progress_percent ?? 0}%` }} />
                           </div>
                           <div className="mt-3 flex flex-wrap gap-2">
-                            <Link to={`/courses/${order.course?.slug || ''}`} className="rounded-full bg-black px-4 py-2 text-xs font-semibold text-white">
+                            <Link to={`/courses/${order.course?.slug || ''}`} className={`rounded-full px-4 py-2 text-xs font-semibold ${solidBtnClass}`}>
                               Continue course
                             </Link>
-                            <button type="button" className="rounded-full border border-[var(--line)] px-4 py-2 text-xs font-semibold">
+                            <button type="button" className={`rounded-full border px-4 py-2 text-xs font-semibold ${outlineBtnClass}`}>
                               Notes
                             </button>
-                            <button type="button" className="rounded-full border border-[var(--line)] px-4 py-2 text-xs font-semibold">
+                            <button type="button" className={`rounded-full border px-4 py-2 text-xs font-semibold ${outlineBtnClass}`}>
                               Remind me later
                             </button>
                           </div>
@@ -3109,43 +3481,43 @@ function UserProfilePage() {
                     </div>
                   ))
                 ) : (
-                  <p className="text-sm text-[var(--muted)]">No purchases yet.</p>
+                  <p className={`text-sm ${mutedText}`}>No purchases yet.</p>
                 )}
               </div>
             </div>
           ) : null}
 
           {activeTab === 'payments' ? (
-            <div className="rounded-[18px] border border-[var(--line)] bg-white p-5">
+            <div className={`rounded-[18px] border p-5 ${cardClass}`}>
               <h2 className="text-lg font-bold">Payments & purchase history</h2>
               <div className="mt-4 space-y-2">
                 {orders.length ? orders.map((order: any) => (
-                  <div key={order.id} className="grid gap-3 rounded-[12px] border border-[var(--line)] p-3 sm:grid-cols-[1fr_auto_auto] sm:items-center">
+                  <div key={order.id} className={`grid gap-3 rounded-[12px] border p-3 sm:grid-cols-[1fr_auto_auto] sm:items-center ${isDark ? 'border-white/10 bg-white/5' : 'border-[var(--line)]'}`}>
                     <div>
                       <p className="text-sm font-semibold">{textOf(order.course?.title, locale) || `Course #${order.course_id}`}</p>
-                      <p className="text-xs text-[var(--muted)]">Order #{order.order_number} · {order.payment_status}</p>
+                      <p className={`text-xs ${mutedText}`}>Order #{order.order_number} · {order.payment_status}</p>
                     </div>
-                    <span className="rounded-full bg-[var(--paper-2)] px-3 py-1 text-xs uppercase">{order.enrollment_status}</span>
+                    <span className={`rounded-full px-3 py-1 text-xs uppercase ${softCardClass}`}>{order.enrollment_status}</span>
                     <span className="text-sm font-semibold">{money(order.amount, order.currency || 'USD')}</span>
                   </div>
-                )) : <p className="text-sm text-[var(--muted)]">No payments yet.</p>}
+                )) : <p className={`text-sm ${mutedText}`}>No payments yet.</p>}
               </div>
             </div>
           ) : null}
 
           {activeTab === 'wishlist' ? (
-            <div className="rounded-[18px] border border-[var(--line)] bg-white p-5">
+            <div className={`rounded-[18px] border p-5 ${cardClass}`}>
               <h2 className="text-lg font-bold">Watch later / remind me later</h2>
               <div className="mt-4 grid gap-3 md:grid-cols-2">
                 {(fallbackCourses as any).concat((fallbackCourses as any)).slice(0, 4).map((course: any, idx: number) => (
-                  <div key={`${course.id}-${idx}`} className="overflow-hidden rounded-[14px] border border-[var(--line)]">
+                  <div key={`${course.id}-${idx}`} className={`overflow-hidden rounded-[14px] border ${isDark ? 'border-white/10 bg-white/5' : 'border-[var(--line)]'}`}>
                     <img src={course.cover_image_url || heroImages[idx % heroImages.length]} alt={textOf(course.title, locale)} className="h-[150px] w-full object-cover" />
                     <div className="p-3">
                       <p className="text-sm font-semibold">{textOf(course.title, locale)}</p>
-                      <p className="mt-1 text-xs text-[var(--muted)]">{course.instructor?.name} · {course.type}</p>
+                      <p className={`mt-1 text-xs ${mutedText}`}>{course.instructor?.name} · {course.type}</p>
                       <div className="mt-3 flex gap-2">
-                        <button type="button" className="rounded-full bg-black px-3 py-2 text-xs font-semibold text-white">Enroll now</button>
-                        <button type="button" className="rounded-full border border-[var(--line)] px-3 py-2 text-xs font-semibold">Folder</button>
+                        <button type="button" className={`rounded-full px-3 py-2 text-xs font-semibold ${solidBtnClass}`}>Enroll now</button>
+                        <button type="button" className={`rounded-full border px-3 py-2 text-xs font-semibold ${outlineBtnClass}`}>Folder</button>
                       </div>
                     </div>
                   </div>
@@ -3155,10 +3527,10 @@ function UserProfilePage() {
           ) : null}
 
           {activeTab === 'messages' ? (
-            <div className="rounded-[18px] border border-[var(--line)] bg-white p-5">
+            <div className={`rounded-[18px] border p-5 ${cardClass}`}>
               <div className="mb-4 flex items-center justify-between gap-3">
                 <h2 className="text-lg font-bold">Messages (Student · Mentor · Admin)</h2>
-                <Link to="/messages" className="rounded-full border border-[var(--line)] px-3 py-2 text-xs font-semibold">
+                <Link to="/messages" className={`rounded-full border px-3 py-2 text-xs font-semibold ${outlineBtnClass}`}>
                   Open full inbox
                 </Link>
               </div>
@@ -3167,14 +3539,14 @@ function UserProfilePage() {
           ) : null}
 
           {activeTab === 'settings' ? (
-            <div className="rounded-[18px] border border-[var(--line)] bg-white p-5">
+            <div className={`rounded-[18px] border p-5 ${cardClass}`}>
               <h2 className="text-lg font-bold">Account settings</h2>
               <div className="mt-4 grid gap-3 md:grid-cols-2">
-                <input value={form.name ?? ''} onChange={(e) => setForm((f: any) => ({ ...f, name: e.target.value }))} placeholder="Name" className="rounded-xl border border-[var(--line)] px-4 py-3" />
-                <input value={form.phone ?? ''} onChange={(e) => setForm((f: any) => ({ ...f, phone: e.target.value }))} placeholder="Phone" className="rounded-xl border border-[var(--line)] px-4 py-3" />
-                <input value={form.headline ?? ''} onChange={(e) => setForm((f: any) => ({ ...f, headline: e.target.value }))} placeholder="Headline" className="rounded-xl border border-[var(--line)] px-4 py-3 md:col-span-2" />
-                <input value={form.avatar_url ?? ''} onChange={(e) => setForm((f: any) => ({ ...f, avatar_url: e.target.value }))} placeholder="Avatar URL" className="rounded-xl border border-[var(--line)] px-4 py-3 md:col-span-2" />
-                <select value={form.locale ?? locale} onChange={(e) => setForm((f: any) => ({ ...f, locale: e.target.value }))} className="rounded-xl border border-[var(--line)] px-4 py-3">
+                <input value={form.name ?? ''} onChange={(e) => setForm((f: any) => ({ ...f, name: e.target.value }))} placeholder="Name" className={`rounded-xl border px-4 py-3 ${inputClass}`} />
+                <input value={form.phone ?? ''} onChange={(e) => setForm((f: any) => ({ ...f, phone: e.target.value }))} placeholder="Phone" className={`rounded-xl border px-4 py-3 ${inputClass}`} />
+                <input value={form.headline ?? ''} onChange={(e) => setForm((f: any) => ({ ...f, headline: e.target.value }))} placeholder="Headline" className={`rounded-xl border px-4 py-3 md:col-span-2 ${inputClass}`} />
+                <input value={form.avatar_url ?? ''} onChange={(e) => setForm((f: any) => ({ ...f, avatar_url: e.target.value }))} placeholder="Avatar URL" className={`rounded-xl border px-4 py-3 md:col-span-2 ${inputClass}`} />
+                <select value={form.locale ?? locale} onChange={(e) => setForm((f: any) => ({ ...f, locale: e.target.value }))} className={`rounded-xl border px-4 py-3 ${inputClass}`}>
                   <option value="en">English</option>
                   <option value="ka">ქართული</option>
                   <option value="ru">Русский</option>
@@ -3191,12 +3563,12 @@ function UserProfilePage() {
                       setMessage(e.message)
                     }
                   }}
-                  className="rounded-xl bg-black px-4 py-3 text-sm font-semibold text-white"
+                  className={`rounded-xl px-4 py-3 text-sm font-semibold ${solidBtnClass}`}
                 >
                   Save profile
                 </button>
               </div>
-              {message ? <p className="mt-3 text-sm text-[var(--muted)]">{message}</p> : null}
+              {message ? <p className={`mt-3 text-sm ${mutedText}`}>{message}</p> : null}
             </div>
           ) : null}
         </div>
@@ -3207,7 +3579,7 @@ function UserProfilePage() {
 }
 
 function InstructorDashboardPage() {
-  const { token, user, locale } = useApp()
+  const { token, user, locale, theme } = useApp()
   const [params, setParams] = useSearchParams()
   const [data, setData] = useState<any>(null)
   const [summary, setSummary] = useState<any>(null)
@@ -3223,23 +3595,54 @@ function InstructorDashboardPage() {
   })
   const [message, setMessage] = useState<string | null>(null)
   const [commTab, setCommTab] = useState<'qa' | 'messages' | 'announcements'>('messages')
+  const [createCategories, setCreateCategories] = useState<Array<{ id: number; slug: string; name: Record<string, string> }>>([])
+  const [activeCourseBuilderId, setActiveCourseBuilderId] = useState<number | null>(null)
+  const [lessonDraft, setLessonDraft] = useState<any>({
+    title_en: '',
+    title_ka: '',
+    title_ru: '',
+    description_en: '',
+    description_ka: '',
+    description_ru: '',
+    duration_seconds: '600',
+    is_preview: true,
+    is_published: true,
+    cover_image_url: '',
+    video_url: '',
+  })
+  const [lessonFiles, setLessonFiles] = useState<{ cover: File | null; video: File | null; materials: File[] }>({
+    cover: null,
+    video: null,
+    materials: [],
+  })
+  const [lessonBusy, setLessonBusy] = useState(false)
+  const [lessonEditorMode, setLessonEditorMode] = useState<'create' | 'edit'>('create')
+  const [selectedLessonId, setSelectedLessonId] = useState<number | null>(null)
+  const [builderNotice, setBuilderNotice] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null)
+  const [showCourseSetupForm, setShowCourseSetupForm] = useState(true)
+  const [fileInputResetKey, setFileInputResetKey] = useState(0)
   const activeTab = params.get('tab') || 'overview'
 
   const canAccess = user && ['instructor', 'admin'].includes(user.role)
 
   useEffect(() => {
     if (!token || !canAccess) return
-    Promise.all([api.meInstructorProfile(token), api.dashboardSummary(token)]).then(([profileRes, summaryRes]) => {
+    Promise.all([api.meInstructorProfile(token), api.dashboardSummary(token), api.landing()]).then(([profileRes, summaryRes, landingRes]) => {
       setData(profileRes)
       setSummary(summaryRes)
+      setCreateCategories((landingRes.categories ?? []) as any)
+      if (!activeCourseBuilderId && profileRes?.courses?.[0]?.id) {
+        setActiveCourseBuilderId(profileRes.courses[0].id)
+      }
     })
-  }, [token, canAccess])
+  }, [token, canAccess, activeCourseBuilderId])
 
   if (!user) return <GateCard title="Instructor Dashboard" text="Login as instructor to manage courses and lessons." />
   if (!canAccess) return <GateCard title="Instructor Dashboard" text="You need instructor role to access this page." />
 
   const courses = data?.courses ?? []
   const stats = summary?.summary ?? {}
+  const activeBuilderCourse = courses.find((c: any) => c.id === activeCourseBuilderId) ?? null
   const instructorTabs = [
     { id: 'overview', label: 'Overview' },
     { id: 'performance', label: 'Performance' },
@@ -3248,37 +3651,179 @@ function InstructorDashboardPage() {
     { id: 'create', label: 'Create course' },
     { id: 'payouts', label: 'Payouts' },
   ]
+  const isDark = theme === 'dark'
+  const cardClass = isDark ? 'border-white/10 bg-[#0c111a]/92 text-white' : 'border-[var(--line)] bg-white'
+  const softCardClass = isDark ? 'border-white/10 bg-white/5 text-white' : 'bg-[var(--paper-2)]'
+  const mutedText = isDark ? 'text-white/60' : 'text-[var(--muted)]'
+  const inputClass = isDark ? 'border-white/12 bg-white/5 text-white' : 'border-[var(--line)]'
+  const solidBtnClass = isDark ? 'bg-white text-black' : 'bg-black text-white'
+  const outlineBtnClass = isDark ? 'border-white/12 bg-white/5 text-white' : 'border-[var(--line)]'
+
+  const resetLessonDraft = () => {
+    setLessonDraft({
+      title_en: '',
+      title_ka: '',
+      title_ru: '',
+      description_en: '',
+      description_ka: '',
+      description_ru: '',
+      duration_seconds: '600',
+      is_preview: true,
+      is_published: true,
+      cover_image_url: '',
+      video_url: '',
+    })
+    setLessonFiles({ cover: null, video: null, materials: [] })
+    setFileInputResetKey((k) => k + 1)
+  }
+
+  const builderLessons = activeBuilderCourse?.lessons ?? []
+  const selectedLesson = builderLessons.find((lesson: any) => lesson.id === selectedLessonId) ?? null
+
+  const beginCreateLesson = () => {
+    setLessonEditorMode('create')
+    setSelectedLessonId(null)
+    resetLessonDraft()
+    setBuilderNotice({ type: 'info', text: 'Ready to create a new lesson. Fill the form and click “Create lesson”.' })
+  }
+
+  const beginEditLesson = (lesson: any) => {
+    setLessonEditorMode('edit')
+    setSelectedLessonId(lesson.id)
+    setLessonDraft({
+      title_en: lesson?.title?.en || lesson?.title?.ru || lesson?.title?.ka || '',
+      title_ka: lesson?.title?.ka || lesson?.title?.en || '',
+      title_ru: lesson?.title?.ru || lesson?.title?.en || '',
+      description_en: lesson?.description?.en || lesson?.description?.ru || lesson?.description?.ka || '',
+      description_ka: lesson?.description?.ka || lesson?.description?.en || '',
+      description_ru: lesson?.description?.ru || lesson?.description?.en || '',
+      duration_seconds: String(lesson?.duration_seconds ?? 0),
+      is_preview: !!lesson?.is_preview,
+      is_published: !!lesson?.is_published,
+      cover_image_url: lesson?.cover_image_url || '',
+      video_url: lesson?.video_url || '',
+    })
+    setLessonFiles({ cover: null, video: null, materials: [] })
+    setFileInputResetKey((k) => k + 1)
+    setBuilderNotice({ type: 'info', text: `Editing lesson: ${textOf(lesson?.title, locale) || 'Untitled lesson'}` })
+  }
+
+  useEffect(() => {
+    if (!activeCourseBuilderId) {
+      setSelectedLessonId(null)
+      setLessonEditorMode('create')
+      return
+    }
+    if (selectedLessonId && !builderLessons.some((lesson: any) => lesson.id === selectedLessonId)) {
+      setSelectedLessonId(null)
+      setLessonEditorMode('create')
+    }
+  }, [activeCourseBuilderId, builderLessons, selectedLessonId])
+
+  const reloadInstructorData = async (nextCourseId?: number | null) => {
+    if (!token) return null
+    const refreshed = await api.meInstructorProfile(token)
+    setData(refreshed)
+    if (typeof nextCourseId === 'number') setActiveCourseBuilderId(nextCourseId)
+    return refreshed
+  }
+
+  const saveLesson = async (opts?: { andAnother?: boolean }) => {
+    if (!token || !activeCourseBuilderId) return
+    const andAnother = !!opts?.andAnother
+    setLessonBusy(true)
+    setBuilderNotice(null)
+    try {
+      const fd = new FormData()
+      const nextSortOrder =
+        lessonEditorMode === 'create'
+          ? (builderLessons.reduce((max: number, lesson: any) => Math.max(max, Number(lesson?.sort_order ?? 0)), 0) || 0) + 1
+          : Number(selectedLesson?.sort_order ?? 1)
+
+      fd.append('sort_order', String(nextSortOrder))
+      fd.append('title[en]', lessonDraft.title_en || 'Untitled lesson')
+      fd.append('title[ka]', lessonDraft.title_ka || lessonDraft.title_en || 'Untitled lesson')
+      fd.append('title[ru]', lessonDraft.title_ru || lessonDraft.title_en || 'Untitled lesson')
+      fd.append('description[en]', lessonDraft.description_en || '')
+      fd.append('description[ka]', lessonDraft.description_ka || lessonDraft.description_en || '')
+      fd.append('description[ru]', lessonDraft.description_ru || lessonDraft.description_en || '')
+      fd.append('duration_seconds', String(Number(lessonDraft.duration_seconds || 0)))
+      fd.append('is_preview', lessonDraft.is_preview ? '1' : '0')
+      fd.append('is_published', lessonDraft.is_published ? '1' : '0')
+      if (lessonDraft.cover_image_url) fd.append('cover_image_url', lessonDraft.cover_image_url)
+      if (lessonDraft.video_url) fd.append('video_url', lessonDraft.video_url)
+      if (lessonFiles.cover) fd.append('cover_image', lessonFiles.cover)
+      if (lessonFiles.video) fd.append('video_file', lessonFiles.video)
+      for (const file of lessonFiles.materials) fd.append('materials_files[]', file)
+
+      let response: any
+      if (lessonEditorMode === 'edit' && selectedLessonId) {
+        response = await api.updateMyLessonForm(activeCourseBuilderId, selectedLessonId, fd, token)
+      } else {
+        response = await api.createMyLessonForm(activeCourseBuilderId, fd, token)
+      }
+
+      const refreshed = await reloadInstructorData(activeCourseBuilderId)
+      const resultingLessonId = response?.lesson?.id ?? selectedLessonId ?? null
+      if (andAnother) {
+        beginCreateLesson()
+        setBuilderNotice({ type: 'success', text: 'Lesson saved successfully. You can add another lesson now.' })
+      } else if (resultingLessonId) {
+        const nextCourse = (refreshed?.courses ?? []).find((c: any) => c.id === activeCourseBuilderId)
+        const nextLesson = nextCourse?.lessons?.find((l: any) => l.id === resultingLessonId)
+        if (nextLesson) beginEditLesson(nextLesson)
+        setBuilderNotice({
+          type: 'success',
+          text: lessonEditorMode === 'edit' ? 'Lesson updated successfully.' : 'Lesson created successfully. It is now selected in the curriculum list.',
+        })
+      } else {
+        setBuilderNotice({ type: 'success', text: 'Lesson saved successfully.' })
+      }
+
+      if (lessonEditorMode === 'create' && !andAnother) {
+        setSelectedLessonId(response?.lesson?.id ?? null)
+      }
+    } catch (e: any) {
+      setBuilderNotice({ type: 'error', text: e.message || 'Failed to save lesson' })
+    } finally {
+      setLessonBusy(false)
+    }
+  }
+
+  const deleteLessonFromBuilder = async (lesson: any) => {
+    if (!token || !activeCourseBuilderId) return
+    try {
+      await api.deleteMyLesson(activeCourseBuilderId, lesson.id, token)
+      await reloadInstructorData(activeCourseBuilderId)
+      if (selectedLessonId === lesson.id) beginCreateLesson()
+      setBuilderNotice({ type: 'success', text: `Lesson deleted: ${textOf(lesson.title, locale) || 'Untitled lesson'}` })
+    } catch (e: any) {
+      setBuilderNotice({ type: 'error', text: e.message || 'Failed to delete lesson' })
+    }
+  }
 
   return (
     <>
       <PageSection title="Instructor Dashboard" subtitle="Performance, communication, course management and creation wizard." />
-      <div className="grid gap-6 xl:grid-cols-[88px_260px_1fr]">
-        <aside className="hidden xl:flex flex-col items-center gap-3 rounded-[20px] border border-[var(--line)] bg-[#11131a] py-4 text-white">
-          {['🏠', '📈', '💬', '🎬', '🛠', '❔'].map((icon, idx) => (
-            <button key={idx} type="button" className={`grid size-11 place-items-center rounded-[14px] text-base ${idx === 2 ? 'bg-[var(--brand)]' : 'bg-white/5 hover:bg-white/10'}`}>
-              <span aria-hidden>{icon}</span>
-            </button>
-          ))}
-        </aside>
-
+      <div className="grid gap-6 xl:grid-cols-[348px_1fr]">
         <aside className="space-y-4">
-          <div className="rounded-[18px] border border-[var(--line)] bg-white p-4">
+          <div className={`rounded-[18px] border p-4 ${cardClass}`}>
             <p className="text-xl font-bold">Instructor</p>
-            <p className="mt-1 text-sm text-[var(--muted)]">{user.name}</p>
+            <p className={`mt-1 text-sm ${mutedText}`}>{user.name}</p>
             <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
-              <div className="rounded-[10px] bg-[var(--paper-2)] p-3">
-                <p className="text-[var(--muted)]">Courses</p>
+              <div className={`rounded-[10px] p-3 ${softCardClass}`}>
+                <p className={mutedText}>Courses</p>
                 <p className="mt-1 text-lg font-bold">{stats.courses_count ?? courses.length ?? 0}</p>
               </div>
-              <div className="rounded-[10px] bg-[var(--paper-2)] p-3">
-                <p className="text-[var(--muted)]">Students</p>
+              <div className={`rounded-[10px] p-3 ${softCardClass}`}>
+                <p className={mutedText}>Students</p>
                 <p className="mt-1 text-lg font-bold">{(stats.students_count ?? 0).toLocaleString?.() ?? stats.students_count ?? 0}</p>
               </div>
             </div>
           </div>
 
-          <div className="rounded-[18px] border border-[var(--line)] bg-white p-3">
-            <p className="px-2 pb-2 text-[10px] font-semibold tracking-[0.16em] uppercase text-[var(--muted)]">Workspace</p>
+          <div className={`rounded-[18px] border p-3 ${cardClass}`}>
+            <p className={`px-2 pb-2 text-[10px] font-semibold tracking-[0.16em] uppercase ${mutedText}`}>Workspace</p>
             <div className="space-y-1">
               {instructorTabs.map((tab) => (
                 <DashboardTabLink
@@ -3296,9 +3841,9 @@ function InstructorDashboardPage() {
             </div>
           </div>
 
-          <div className="rounded-[18px] border border-[var(--line)] bg-white p-4">
+          <div className={`rounded-[18px] border p-4 ${cardClass}`}>
             <p className="text-xs font-semibold tracking-[0.16em] uppercase">Course scope</p>
-            <select className="mt-3 w-full rounded-[12px] border border-[var(--line)] px-3 py-2 text-sm">
+            <select className={`mt-3 w-full rounded-[12px] border px-3 py-2 text-sm ${inputClass}`}>
               <option>All courses</option>
               {courses.map((course: any) => (
                 <option key={course.id}>{textOf(course.title, locale)}</option>
@@ -3308,7 +3853,7 @@ function InstructorDashboardPage() {
         </aside>
 
         <div className="space-y-5">
-          <div className="rounded-[18px] border border-[var(--line)] bg-white p-5">
+          <div className={`rounded-[18px] border p-5 ${cardClass}`}>
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <h2 className="text-2xl font-extrabold">
@@ -3319,11 +3864,11 @@ function InstructorDashboardPage() {
                   {activeTab === 'create' && 'Create Course'}
                   {activeTab === 'payouts' && 'Payouts'}
                 </h2>
-                <p className="mt-1 text-sm text-[var(--muted)]">Dashboard layout for instructors with practical management tools.</p>
+                <p className={`mt-1 text-sm ${mutedText}`}>Dashboard layout for instructors with practical management tools.</p>
               </div>
               <div className="flex gap-2">
-                <button type="button" className="rounded-full border border-[var(--line)] px-4 py-2 text-xs font-semibold">Last 12 months</button>
-                <button type="button" className="rounded-full bg-black px-4 py-2 text-xs font-semibold text-white">Export</button>
+                <button type="button" className={`rounded-full border px-4 py-2 text-xs font-semibold ${outlineBtnClass}`}>Last 12 months</button>
+                <button type="button" className={`rounded-full px-4 py-2 text-xs font-semibold ${solidBtnClass}`}>Export</button>
               </div>
             </div>
           </div>
@@ -3337,19 +3882,19 @@ function InstructorDashboardPage() {
                 <DashboardMetricCard label="Refunds" value={stats.refunds_count ?? 0} hint="Cancelled/refunded" />
               </div>
 
-              <div className="rounded-[18px] border border-[var(--line)] bg-white p-5">
+              <div className={`rounded-[18px] border p-5 ${cardClass}`}>
                 <div className="mb-4 flex items-center justify-between gap-3">
                   <h3 className="text-lg font-bold">Revenue / performance overview</h3>
-                  <select className="rounded-[10px] border border-[var(--line)] px-3 py-2 text-xs">
+                  <select className={`rounded-[10px] border px-3 py-2 text-xs ${inputClass}`}>
                     <option>All courses</option>
                     <option>Live only</option>
                     <option>Recorded only</option>
                   </select>
                 </div>
-                <div className="grid h-[260px] place-items-center rounded-[14px] border border-dashed border-[var(--line)] bg-[var(--paper-2)] text-center">
+                <div className={`grid h-[260px] place-items-center rounded-[14px] border border-dashed text-center ${isDark ? 'border-white/12 bg-white/5' : 'border-[var(--line)] bg-[var(--paper-2)]'}`}>
                   <div>
                     <p className="text-base font-semibold">Chart area (MVP)</p>
-                    <p className="mt-2 max-w-[520px] text-sm text-[var(--muted)]">
+                    <p className={`mt-2 max-w-[520px] text-sm ${mutedText}`}>
                       Prepared for revenue, enrollments, completion rate, average rating, and cohort performance charts.
                     </p>
                   </div>
@@ -3358,43 +3903,43 @@ function InstructorDashboardPage() {
 
               {activeTab === 'overview' ? (
                 <div className="grid gap-5 xl:grid-cols-[1.1fr_0.9fr]">
-                  <div className="rounded-[18px] border border-[var(--line)] bg-white p-5">
+                  <div className={`rounded-[18px] border p-5 ${cardClass}`}>
                     <h3 className="text-lg font-bold">Recent courses</h3>
                     <div className="mt-4 space-y-3">
                       {courses.length ? courses.slice(0, 5).map((course: any) => (
-                        <div key={course.id} className="rounded-[14px] border border-[var(--line)] p-4">
+                        <div key={course.id} className={`rounded-[14px] border p-4 ${isDark ? 'border-white/10 bg-white/5' : 'border-[var(--line)]'}`}>
                           <div className="flex flex-wrap items-start justify-between gap-3">
                             <div>
                               <p className="text-sm font-semibold">{textOf(course.title, locale)}</p>
-                              <p className="mt-1 text-xs text-[var(--muted)]">
+                              <p className={`mt-1 text-xs ${mutedText}`}>
                                 {course.status} · {course.type} · {course.lessons_count ?? 0} lessons
                               </p>
                             </div>
                             <span className="text-sm font-semibold">{money(course.sale_price_amount ?? course.price_amount, course.currency || 'USD')}</span>
                           </div>
                           <div className="mt-3 flex gap-2">
-                            <Link to={`/courses/${course.slug}`} className="rounded-full border border-[var(--line)] px-3 py-1.5 text-[10px] font-semibold uppercase">Preview</Link>
-                            <button type="button" className="rounded-full border border-[var(--line)] px-3 py-1.5 text-[10px] font-semibold uppercase">Edit</button>
-                            <button type="button" onClick={() => setParams({ tab: 'communication' })} className="rounded-full border border-[var(--line)] px-3 py-1.5 text-[10px] font-semibold uppercase">Messages</button>
+                            <Link to={`/courses/${course.slug}`} className={`rounded-full border px-3 py-1.5 text-[10px] font-semibold uppercase ${outlineBtnClass}`}>Preview</Link>
+                            <button type="button" className={`rounded-full border px-3 py-1.5 text-[10px] font-semibold uppercase ${outlineBtnClass}`}>Edit</button>
+                            <button type="button" onClick={() => setParams({ tab: 'communication' })} className={`rounded-full border px-3 py-1.5 text-[10px] font-semibold uppercase ${outlineBtnClass}`}>Messages</button>
                           </div>
                         </div>
-                      )) : <p className="text-sm text-[var(--muted)]">No courses yet.</p>}
+                      )) : <p className={`text-sm ${mutedText}`}>No courses yet.</p>}
                     </div>
                   </div>
 
                   <div className="space-y-5">
-                    <div className="rounded-[18px] border border-[var(--line)] bg-white p-5">
+                    <div className={`rounded-[18px] border p-5 ${cardClass}`}>
                       <h3 className="text-lg font-bold">Communication snapshot</h3>
                       <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
-                        <div className="rounded-[12px] bg-[var(--paper-2)] p-3"><p className="text-xs text-[var(--muted)]">Unread messages</p><p className="mt-1 text-xl font-bold">1</p></div>
-                        <div className="rounded-[12px] bg-[var(--paper-2)] p-3"><p className="text-xs text-[var(--muted)]">Q&A threads</p><p className="mt-1 text-xl font-bold">4</p></div>
-                        <div className="rounded-[12px] bg-[var(--paper-2)] p-3"><p className="text-xs text-[var(--muted)]">Homework to review</p><p className="mt-1 text-xl font-bold">2</p></div>
-                        <div className="rounded-[12px] bg-[var(--paper-2)] p-3"><p className="text-xs text-[var(--muted)]">Announcements draft</p><p className="mt-1 text-xl font-bold">1</p></div>
+                        <div className={`rounded-[12px] p-3 ${softCardClass}`}><p className={`text-xs ${mutedText}`}>Unread messages</p><p className="mt-1 text-xl font-bold">1</p></div>
+                        <div className={`rounded-[12px] p-3 ${softCardClass}`}><p className={`text-xs ${mutedText}`}>Q&A threads</p><p className="mt-1 text-xl font-bold">4</p></div>
+                        <div className={`rounded-[12px] p-3 ${softCardClass}`}><p className={`text-xs ${mutedText}`}>Homework to review</p><p className="mt-1 text-xl font-bold">2</p></div>
+                        <div className={`rounded-[12px] p-3 ${softCardClass}`}><p className={`text-xs ${mutedText}`}>Announcements draft</p><p className="mt-1 text-xl font-bold">1</p></div>
                       </div>
                     </div>
-                    <div className="rounded-[18px] border border-[var(--line)] bg-white p-5">
+                    <div className={`rounded-[18px] border p-5 ${cardClass}`}>
                       <h3 className="text-lg font-bold">Payout settings</h3>
-                      <p className="mt-2 text-sm text-[var(--muted)]">Bank transfer, sales split, payout history, and withdrawal actions.</p>
+                      <p className={`mt-2 text-sm ${mutedText}`}>Bank transfer, sales split, payout history, and withdrawal actions.</p>
                       <button
                         onClick={async () => {
                           if (!token) return
@@ -3413,11 +3958,11 @@ function InstructorDashboardPage() {
                             setMessage(e.message)
                           }
                         }}
-                        className="mt-4 rounded-xl bg-black px-4 py-3 text-sm font-semibold text-white"
+                        className={`mt-4 rounded-xl px-4 py-3 text-sm font-semibold ${solidBtnClass}`}
                       >
                         Quick update payout profile
                       </button>
-                      {message ? <p className="mt-2 text-sm text-[var(--muted)]">{message}</p> : null}
+                      {message ? <p className={`mt-2 text-sm ${mutedText}`}>{message}</p> : null}
                     </div>
                   </div>
                 </div>
@@ -3426,7 +3971,7 @@ function InstructorDashboardPage() {
           ) : null}
 
           {activeTab === 'communication' ? (
-            <div className="rounded-[18px] border border-[var(--line)] bg-white p-5">
+            <div className={`rounded-[18px] border p-5 ${cardClass}`}>
               <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
                 <div className="flex gap-2">
                   {[
@@ -3439,7 +3984,7 @@ function InstructorDashboardPage() {
                       type="button"
                       onClick={() => setCommTab(id as 'qa' | 'messages' | 'announcements')}
                       className={`rounded-full px-4 py-2 text-xs font-semibold uppercase tracking-[0.14em] ${
-                        commTab === id ? 'bg-black text-white' : 'border border-[var(--line)]'
+                        commTab === id ? (isDark ? 'bg-white text-black' : 'bg-black text-white') : isDark ? 'border border-white/12 bg-white/5 text-white' : 'border border-[var(--line)]'
                       }`}
                     >
                       {label}
@@ -3447,8 +3992,8 @@ function InstructorDashboardPage() {
                   ))}
                 </div>
                 <div className="flex gap-2 text-xs">
-                  <button type="button" className="rounded-full border border-[var(--line)] px-3 py-2">Unread</button>
-                  <button type="button" className="rounded-full border border-[var(--line)] px-3 py-2">Newest first</button>
+                  <button type="button" className={`rounded-full border px-3 py-2 ${outlineBtnClass}`}>Unread</button>
+                  <button type="button" className={`rounded-full border px-3 py-2 ${outlineBtnClass}`}>Newest first</button>
                 </div>
               </div>
 
@@ -3457,21 +4002,21 @@ function InstructorDashboardPage() {
               ) : null}
 
               {commTab === 'qa' ? (
-                <div className="grid h-[360px] place-items-center rounded-[14px] border border-dashed border-[var(--line)] bg-[var(--paper-2)] text-center">
+                <div className={`grid h-[360px] place-items-center rounded-[14px] border border-dashed text-center ${isDark ? 'border-white/12 bg-white/5' : 'border-[var(--line)] bg-[var(--paper-2)]'}`}>
                   <div>
                     <p className="text-lg font-bold">Q&A threads</p>
-                    <p className="mt-2 text-sm text-[var(--muted)]">Student questions, instructor answers, admin moderation tools will appear here.</p>
+                    <p className={`mt-2 text-sm ${mutedText}`}>Student questions, instructor answers, admin moderation tools will appear here.</p>
                   </div>
                 </div>
               ) : null}
 
               {commTab === 'announcements' ? (
                 <div className="space-y-4">
-                  <textarea rows={5} placeholder="Write announcement for enrolled students..." className="w-full rounded-[14px] border border-[var(--line)] bg-[var(--paper-2)] p-4 text-sm outline-none" />
+                  <textarea rows={5} placeholder="Write announcement for enrolled students..." className={`w-full rounded-[14px] border p-4 text-sm outline-none ${isDark ? 'border-white/12 bg-white/5 text-white placeholder:text-white/35' : 'border-[var(--line)] bg-[var(--paper-2)]'}`} />
                   <div className="flex flex-wrap gap-2">
-                    <button type="button" className="rounded-full bg-black px-4 py-2 text-xs font-semibold text-white">Send to all students</button>
-                    <button type="button" className="rounded-full border border-[var(--line)] px-4 py-2 text-xs font-semibold">Save draft</button>
-                    <button type="button" className="rounded-full border border-[var(--line)] px-4 py-2 text-xs font-semibold">Schedule webinar reminder</button>
+                    <button type="button" className={`rounded-full px-4 py-2 text-xs font-semibold ${solidBtnClass}`}>Send to all students</button>
+                    <button type="button" className={`rounded-full border px-4 py-2 text-xs font-semibold ${outlineBtnClass}`}>Save draft</button>
+                    <button type="button" className={`rounded-full border px-4 py-2 text-xs font-semibold ${outlineBtnClass}`}>Schedule webinar reminder</button>
                   </div>
                 </div>
               ) : null}
@@ -3479,158 +4024,457 @@ function InstructorDashboardPage() {
           ) : null}
 
           {activeTab === 'courses' ? (
-            <div className="rounded-[18px] border border-[var(--line)] bg-white p-5">
+            <div className={`rounded-[18px] border p-5 ${cardClass}`}>
               <div className="mb-4 flex items-center justify-between gap-3">
                 <h3 className="text-lg font-bold">Your courses</h3>
-                <button type="button" onClick={() => setParams({ tab: 'create' })} className="rounded-full bg-black px-4 py-2 text-xs font-semibold text-white">
+                <button type="button" onClick={() => setParams({ tab: 'create' })} className={`rounded-full px-4 py-2 text-xs font-semibold ${solidBtnClass}`}>
                   Create new course
                 </button>
               </div>
               <div className="grid gap-4 md:grid-cols-2">
                 {courses.length ? courses.map((course: any, idx: number) => (
-                  <div key={course.id} className="overflow-hidden rounded-[14px] border border-[var(--line)]">
+                  <div key={course.id} className={`overflow-hidden rounded-[14px] border ${isDark ? 'border-white/10 bg-white/5' : 'border-[var(--line)]'}`}>
                     <img src={course.cover_image_url || heroImages[idx % heroImages.length]} alt={textOf(course.title, locale)} className="h-[180px] w-full object-cover" />
                     <div className="p-4">
                       <div className="flex items-center justify-between gap-2">
-                        <span className="rounded-full bg-[var(--paper-2)] px-2 py-1 text-[10px] uppercase">{course.type}</span>
-                        <span className="text-xs text-[var(--muted)]">{course.status}</span>
+                        <span className={`rounded-full px-2 py-1 text-[10px] uppercase ${softCardClass}`}>{course.type}</span>
+                        <span className={`text-xs ${mutedText}`}>{course.status}</span>
                       </div>
                       <p className="mt-2 text-sm font-semibold">{textOf(course.title, locale)}</p>
-                      <p className="mt-1 text-xs text-[var(--muted)]">{course.lessons_count ?? 0} lessons · {course.duration_minutes ?? 0} min</p>
+                      <p className={`mt-1 text-xs ${mutedText}`}>{course.lessons_count ?? 0} lessons · {course.duration_minutes ?? 0} min</p>
                       <div className="mt-3 flex items-center justify-between">
                         <span className="text-sm font-bold">{money(course.sale_price_amount ?? course.price_amount, course.currency || 'USD')}</span>
                         <div className="flex gap-2">
-                          <Link to={`/courses/${course.slug}`} className="rounded-full border border-[var(--line)] px-3 py-1.5 text-[10px] font-semibold uppercase">Public page</Link>
-                          <button type="button" className="rounded-full border border-[var(--line)] px-3 py-1.5 text-[10px] font-semibold uppercase">Edit</button>
+                          <Link to={`/courses/${course.slug}`} className={`rounded-full border px-3 py-1.5 text-[10px] font-semibold uppercase ${outlineBtnClass}`}>Public page</Link>
+                          <button type="button" className={`rounded-full border px-3 py-1.5 text-[10px] font-semibold uppercase ${outlineBtnClass}`}>Edit</button>
                         </div>
                       </div>
                     </div>
                   </div>
-                )) : <p className="text-sm text-[var(--muted)]">No courses yet.</p>}
+                )) : <p className={`text-sm ${mutedText}`}>No courses yet.</p>}
               </div>
             </div>
           ) : null}
 
           {activeTab === 'create' ? (
-            <div className="space-y-5">
-              <div className="rounded-[18px] border border-[var(--line)] bg-white p-5">
-                <h3 className="text-lg font-bold">Create course wizard (instructor onboarding style)</h3>
-                <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                  {[
-                    ['1', 'Type', newCourse.type || 'online'],
-                    ['2', 'Working title', newCourse.title_en || 'Untitled course'],
-                    ['3', 'Category', newCourse.category_slug],
-                    ['4', 'Weekly time', newCourse.weekly_time],
-                  ].map(([step, label, value]) => (
-                    <div key={step} className="rounded-[14px] border border-[var(--line)] bg-[var(--paper-2)] p-4">
-                      <p className="text-[10px] font-semibold tracking-[0.16em] uppercase text-[var(--muted)]">Step {step}</p>
-                      <p className="mt-2 text-sm font-semibold">{label}</p>
-                      <p className="mt-1 text-xs text-[var(--muted)]">{value}</p>
-                    </div>
-                  ))}
+            <div className={`rounded-[20px] border p-4 sm:p-5 ${cardClass}`}>
+              <div className={`mb-4 flex flex-wrap items-center justify-between gap-3 rounded-[14px] border px-4 py-3 ${isDark ? 'border-white/10 bg-white/5' : 'border-[var(--line)] bg-[var(--paper-2)]'}`}>
+                <div>
+                  <p className={`text-[10px] font-semibold tracking-[0.18em] uppercase ${mutedText}`}>Course Builder</p>
+                  <h3 className="mt-1 text-lg font-bold">Create course and build curriculum</h3>
+                  <p className={`mt-1 text-xs ${mutedText}`}>Clear workflow: create/select course, add lessons, edit lessons, and upload media files.</p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowCourseSetupForm((v) => !v)}
+                    className={`rounded-full border px-4 py-2 text-xs font-semibold ${outlineBtnClass}`}
+                  >
+                    {showCourseSetupForm ? 'Hide course setup' : 'Show course setup'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      beginCreateLesson()
+                      setShowCourseSetupForm(false)
+                    }}
+                    className={`rounded-full border px-4 py-2 text-xs font-semibold ${outlineBtnClass}`}
+                  >
+                    New lesson
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setParams({ tab: 'courses' })}
+                    className={`rounded-full px-4 py-2 text-xs font-semibold ${solidBtnClass}`}
+                  >
+                    Close builder
+                  </button>
                 </div>
               </div>
 
-              <div className="rounded-[18px] border border-[var(--line)] bg-white p-5">
-                <h3 className="text-lg font-bold">Course setup</h3>
-                <div className="mt-4 grid gap-3">
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <div className="rounded-[14px] border border-[var(--line)] p-4">
-                      <p className="text-sm font-semibold">1. Choose course type</p>
-                      <div className="mt-3 grid grid-cols-2 gap-2">
-                        {['online', 'offline', 'live', 'recorded', 'webinar', 'retreat'].map((option) => (
-                          <button
-                            key={option}
-                            type="button"
-                            onClick={() => setNewCourse((f: any) => ({ ...f, type: option }))}
-                            className={`rounded-[10px] px-3 py-2 text-xs font-semibold uppercase ${newCourse.type === option ? 'bg-black text-white' : 'bg-[var(--paper-2)]'}`}
-                          >
-                            {option}
-                          </button>
-                        ))}
+              {builderNotice ? (
+                <div
+                  className={`mb-4 rounded-[14px] border px-4 py-3 text-sm ${
+                    builderNotice.type === 'success'
+                      ? isDark
+                        ? 'border-emerald-400/20 bg-emerald-400/10 text-emerald-200'
+                        : 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                      : builderNotice.type === 'error'
+                        ? isDark
+                          ? 'border-red-400/20 bg-red-400/10 text-red-200'
+                          : 'border-red-200 bg-red-50 text-red-700'
+                        : isDark
+                          ? 'border-white/10 bg-white/5 text-white/85'
+                          : 'border-[var(--line)] bg-[var(--paper-2)] text-[#444]'
+                  }`}
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <p>{builderNotice.text}</p>
+                    <div className="flex gap-2">
+                      <button type="button" onClick={() => setBuilderNotice(null)} className="rounded-full border border-current/20 px-3 py-1 text-[11px] font-semibold">
+                        Dismiss
+                      </button>
+                      {builderNotice.type === 'success' ? (
+                        <button type="button" onClick={() => beginCreateLesson()} className="rounded-full border border-current/20 px-3 py-1 text-[11px] font-semibold">
+                          Add another lesson
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
+              <div className="grid gap-4 xl:grid-cols-[340px_minmax(0,1fr)]">
+                <aside className="space-y-4">
+                  <div className={`rounded-[16px] border p-4 ${isDark ? 'border-white/10 bg-[#0a0f17]' : 'border-[var(--line)] bg-white'}`}>
+                    <label className={`mb-2 block text-[10px] font-semibold tracking-[0.16em] uppercase ${mutedText}`}>Selected course</label>
+                    <select
+                      value={activeCourseBuilderId ?? ''}
+                      onChange={(e) => {
+                        setActiveCourseBuilderId(e.target.value ? Number(e.target.value) : null)
+                        setBuilderNotice(null)
+                      }}
+                      className={`w-full rounded-xl border px-3 py-2 text-sm ${inputClass}`}
+                    >
+                      <option value="">Select course</option>
+                      {courses.map((course: any) => (
+                        <option key={course.id} value={course.id}>
+                          {textOf(course.title, locale)} ({course.lessons_count ?? 0} lessons)
+                        </option>
+                      ))}
+                    </select>
+                    {activeBuilderCourse ? (
+                      <div className={`mt-3 rounded-[12px] border p-3 ${isDark ? 'border-white/10 bg-white/5' : 'border-[var(--line)] bg-[var(--paper-2)]'}`}>
+                        <p className="text-sm font-semibold">{textOf(activeBuilderCourse.title, locale)}</p>
+                        <p className={`mt-1 text-xs ${mutedText}`}>
+                          {activeBuilderCourse.status} · {activeBuilderCourse.type} · {(activeBuilderCourse.lessons?.length ?? 0)} lessons
+                        </p>
+                        <p className={`mt-1 text-xs ${mutedText}`}>{money(activeBuilderCourse.sale_price_amount ?? activeBuilderCourse.price_amount, activeBuilderCourse.currency || 'USD')}</p>
+                      </div>
+                    ) : (
+                      <p className={`mt-3 text-xs ${mutedText}`}>Create a course below or pick an existing course to start building lessons.</p>
+                    )}
+                  </div>
+
+                  {showCourseSetupForm ? (
+                    <div className={`rounded-[16px] border p-4 ${isDark ? 'border-white/10 bg-[#0a0f17]' : 'border-[var(--line)] bg-white'}`}>
+                      <div className="mb-3 flex items-center justify-between gap-2">
+                        <h4 className="text-sm font-semibold">Course setup</h4>
+                        <span className={`rounded-full px-2 py-1 text-[10px] uppercase ${isDark ? 'border border-white/10 bg-white/5' : 'bg-[var(--paper-2)]'}`}>
+                          Step 1
+                        </span>
+                      </div>
+                      <div className="space-y-3">
+                        <div className="grid grid-cols-2 gap-2">
+                          {['online', 'offline', 'live', 'recorded'].map((option) => (
+                            <button
+                              key={option}
+                              type="button"
+                              onClick={() => setNewCourse((f: any) => ({ ...f, type: option }))}
+                              className={`rounded-[10px] px-3 py-2 text-[11px] font-semibold uppercase ${
+                                newCourse.type === option
+                                  ? isDark
+                                    ? 'bg-white text-black'
+                                    : 'bg-black text-white'
+                                  : isDark
+                                    ? 'border border-white/10 bg-white/5 text-white'
+                                    : 'bg-[var(--paper-2)]'
+                              }`}
+                            >
+                              {option}
+                            </button>
+                          ))}
+                        </div>
+
+                        <select value={newCourse.category_slug} onChange={(e) => setNewCourse((f: any) => ({ ...f, category_slug: e.target.value }))} className={`w-full rounded-xl border px-3 py-2 text-sm ${inputClass}`}>
+                          {(createCategories.length ? createCategories : browseTopics.map((t, idx) => ({ id: idx + 1, slug: t.slug, name: { en: t.label, ka: t.label, ru: t.label } } as any))).map((topic: any) => (
+                            <option key={topic.slug} value={topic.slug}>{textOf(topic.name, locale) || topic.label || topic.slug}</option>
+                          ))}
+                        </select>
+                        <input value={newCourse.title_en} onChange={(e) => setNewCourse((f: any) => ({ ...f, title_en: e.target.value }))} placeholder="Course title (EN)" className={`w-full rounded-xl border px-3 py-2 text-sm ${inputClass}`} />
+                        <div className="grid grid-cols-2 gap-2">
+                          <input value={newCourse.title_ka} onChange={(e) => setNewCourse((f: any) => ({ ...f, title_ka: e.target.value }))} placeholder="Title KA" className={`rounded-xl border px-3 py-2 text-sm ${inputClass}`} />
+                          <input value={newCourse.title_ru} onChange={(e) => setNewCourse((f: any) => ({ ...f, title_ru: e.target.value }))} placeholder="Title RU" className={`rounded-xl border px-3 py-2 text-sm ${inputClass}`} />
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <input value={newCourse.price_amount} onChange={(e) => setNewCourse((f: any) => ({ ...f, price_amount: e.target.value }))} placeholder="Price" className={`rounded-xl border px-3 py-2 text-sm ${inputClass}`} />
+                          <select value={newCourse.status} onChange={(e) => setNewCourse((f: any) => ({ ...f, status: e.target.value }))} className={`rounded-xl border px-3 py-2 text-sm ${inputClass}`}>
+                            <option value="draft">draft</option>
+                            <option value="published">published</option>
+                          </select>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            if (!token) return
+                            try {
+                              const selectedCategory = createCategories.find((c: any) => c.slug === newCourse.category_slug)
+                              const res = await api.createMyCourse(
+                                {
+                                  type: ['online', 'offline'].includes(newCourse.type)
+                                    ? newCourse.type
+                                    : (newCourse.type === 'retreat' || newCourse.type === 'offline-workshops' ? 'offline' : 'online'),
+                                  category_id: selectedCategory?.id,
+                                  title: { en: newCourse.title_en, ka: newCourse.title_ka, ru: newCourse.title_ru },
+                                  short_description: { en: 'Created from instructor dashboard', ka: 'შექმნილია კაბინეტიდან', ru: 'Создано из кабинета' },
+                                  description: { en: 'Course description', ka: 'კურსის აღწერა', ru: 'Описание курса' },
+                                  price_amount: Number(newCourse.price_amount || 0),
+                                  currency: 'USD',
+                                  status: newCourse.status,
+                                  language_codes: ['en', 'ka', 'ru'],
+                                },
+                                token,
+                              )
+                              const refreshed = await reloadInstructorData(res.course?.id ?? null)
+                              const nextId = res.course?.id ?? refreshed?.courses?.[0]?.id ?? null
+                              if (nextId) setActiveCourseBuilderId(nextId)
+                              setBuilderNotice({ type: 'success', text: 'Course created. Continue by adding lessons in the curriculum builder.' })
+                              setShowCourseSetupForm(false)
+                              beginCreateLesson()
+                            } catch (e: any) {
+                              setBuilderNotice({ type: 'error', text: e.message || 'Failed to create course' })
+                            }
+                          }}
+                          className={`w-full rounded-xl px-4 py-3 text-sm font-semibold ${solidBtnClass}`}
+                        >
+                          Create course
+                        </button>
                       </div>
                     </div>
-                    <div className="rounded-[14px] border border-[var(--line)] p-4">
-                      <p className="text-sm font-semibold">2. Category + time</p>
-                      <select value={newCourse.category_slug} onChange={(e) => setNewCourse((f: any) => ({ ...f, category_slug: e.target.value }))} className="mt-3 w-full rounded-xl border border-[var(--line)] px-3 py-2 text-sm">
-                        {browseTopics.map((topic) => (
-                          <option key={topic.slug} value={topic.slug}>{topic.label}</option>
-                        ))}
-                      </select>
-                      <select value={newCourse.weekly_time} onChange={(e) => setNewCourse((f: any) => ({ ...f, weekly_time: e.target.value }))} className="mt-2 w-full rounded-xl border border-[var(--line)] px-3 py-2 text-sm">
-                        <option value="0-2h">0-2 hours / week</option>
-                        <option value="2-4h">2-4 hours / week</option>
-                        <option value="5h+">5+ hours / week</option>
-                        <option value="undecided">Undecided</option>
-                      </select>
+                  ) : null}
+
+                  <div className={`rounded-[16px] border p-4 ${isDark ? 'border-white/10 bg-[#0a0f17]' : 'border-[var(--line)] bg-white'}`}>
+                    <div className="mb-3 flex items-center justify-between gap-2">
+                      <div>
+                        <h4 className="text-sm font-semibold">Curriculum</h4>
+                        <p className={`text-xs ${mutedText}`}>{builderLessons.length} lessons</p>
+                      </div>
+                      <button type="button" onClick={() => beginCreateLesson()} className={`rounded-full border px-3 py-1.5 text-[10px] font-semibold uppercase ${outlineBtnClass}`}>
+                        + Add lesson
+                      </button>
+                    </div>
+
+                    <div className="max-h-[58vh] space-y-2 overflow-auto pr-1">
+                      {builderLessons.length ? (
+                        builderLessons.map((lesson: any) => {
+                          const isActiveLesson = lesson.id === selectedLessonId
+                          return (
+                            <button
+                              key={lesson.id}
+                              type="button"
+                              onClick={() => beginEditLesson(lesson)}
+                              className={`w-full rounded-[12px] border p-3 text-left transition ${
+                                isActiveLesson
+                                  ? isDark
+                                    ? 'border-white/25 bg-white/10'
+                                    : 'border-black bg-black text-white'
+                                  : isDark
+                                    ? 'border-white/10 bg-white/5 hover:bg-white/10'
+                                    : 'border-[var(--line)] bg-[var(--paper-2)] hover:bg-white'
+                              }`}
+                            >
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="min-w-0">
+                                  <p className="text-sm font-semibold">
+                                    {lesson.sort_order}. {textOf(lesson.title, locale) || 'Untitled lesson'}
+                                  </p>
+                                  <p className={`mt-1 text-xs ${isActiveLesson && !isDark ? 'text-white/80' : mutedText}`}>
+                                    {Math.max(1, Math.round((lesson.duration_seconds ?? 0) / 60 || 1))} min · {lesson.is_preview ? 'Preview' : 'Private'} · {(lesson.materials ?? []).length} files
+                                  </p>
+                                </div>
+                                {(lesson.cover_image_url || lesson.video_url) ? <span className={`rounded-full px-2 py-1 text-[9px] font-semibold uppercase ${isActiveLesson && !isDark ? 'bg-white/20 text-white' : isDark ? 'bg-white/10 text-white/80' : 'bg-white'}`}>media</span> : null}
+                              </div>
+                            </button>
+                          )
+                        })
+                      ) : (
+                        <div className={`rounded-[12px] border border-dashed p-4 text-sm ${isDark ? 'border-white/12 text-white/60' : 'border-[var(--line)] text-[var(--muted)]'}`}>
+                          No lessons yet. Create the first lesson to start building the course curriculum.
+                        </div>
+                      )}
                     </div>
                   </div>
+                </aside>
 
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <input value={newCourse.title_en} onChange={(e) => setNewCourse((f: any) => ({ ...f, title_en: e.target.value }))} placeholder="Working title (EN)" className="rounded-xl border border-[var(--line)] px-4 py-3" />
-                    <input value={newCourse.title_ru} onChange={(e) => setNewCourse((f: any) => ({ ...f, title_ru: e.target.value }))} placeholder="Working title (RU)" className="rounded-xl border border-[var(--line)] px-4 py-3" />
-                  </div>
-                  <input value={newCourse.title_ka} onChange={(e) => setNewCourse((f: any) => ({ ...f, title_ka: e.target.value }))} placeholder="Working title (KA)" className="rounded-xl border border-[var(--line)] px-4 py-3" />
+                <div className="space-y-4">
+                  {!activeBuilderCourse ? (
+                    <div className={`rounded-[16px] border border-dashed p-6 ${isDark ? 'border-white/12 bg-white/5' : 'border-[var(--line)] bg-white'}`}>
+                      <h4 className="text-base font-bold">No course selected</h4>
+                      <p className={`mt-2 text-sm ${mutedText}`}>Create a course from the left panel or select an existing course to open the lesson editor.</p>
+                    </div>
+                  ) : (
+                    <>
+                      <div className={`rounded-[16px] border p-4 ${isDark ? 'border-white/10 bg-[#0a0f17]' : 'border-[var(--line)] bg-white'}`}>
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <div>
+                            <p className={`text-[10px] font-semibold tracking-[0.16em] uppercase ${mutedText}`}>Lesson Editor</p>
+                            <h4 className="mt-1 text-lg font-bold">
+                              {lessonEditorMode === 'edit' ? `Edit lesson #${selectedLesson?.sort_order ?? ''}` : 'Create new lesson'}
+                            </h4>
+                            <p className={`mt-1 text-xs ${mutedText}`}>
+                              {lessonEditorMode === 'edit'
+                                ? 'Update metadata, replace files, and save changes.'
+                                : 'Add content, upload files, then create lesson. Use “Create + add another” for faster curriculum building.'}
+                            </p>
+                          </div>
+                          <div className="flex gap-2">
+                            {lessonEditorMode === 'edit' && selectedLesson ? (
+                              <button type="button" onClick={() => void deleteLessonFromBuilder(selectedLesson)} className={`rounded-full border px-3 py-2 text-xs font-semibold ${outlineBtnClass}`}>
+                                Delete lesson
+                              </button>
+                            ) : null}
+                            <button type="button" onClick={() => beginCreateLesson()} className={`rounded-full border px-3 py-2 text-xs font-semibold ${outlineBtnClass}`}>
+                              New lesson
+                            </button>
+                          </div>
+                        </div>
+                      </div>
 
-                  <div className="grid gap-3 sm:grid-cols-3">
-                    <input value={newCourse.price_amount} onChange={(e) => setNewCourse((f: any) => ({ ...f, price_amount: e.target.value }))} placeholder="Price" className="rounded-xl border border-[var(--line)] px-4 py-3" />
-                    <select value={newCourse.status} onChange={(e) => setNewCourse((f: any) => ({ ...f, status: e.target.value }))} className="rounded-xl border border-[var(--line)] px-4 py-3">
-                      <option value="draft">draft</option>
-                      <option value="published">published</option>
-                    </select>
-                    <input placeholder="Trailer URL (optional)" className="rounded-xl border border-[var(--line)] px-4 py-3" />
-                  </div>
+                      <div className={`rounded-[16px] border p-4 ${isDark ? 'border-white/10 bg-[#0a0f17]' : 'border-[var(--line)] bg-white'}`}>
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <input value={lessonDraft.title_en} onChange={(e) => setLessonDraft((f: any) => ({ ...f, title_en: e.target.value }))} placeholder="Lesson title (EN)" className={`rounded-xl border px-3 py-2 text-sm ${inputClass}`} />
+                          <input value={lessonDraft.title_ru} onChange={(e) => setLessonDraft((f: any) => ({ ...f, title_ru: e.target.value }))} placeholder="Lesson title (RU)" className={`rounded-xl border px-3 py-2 text-sm ${inputClass}`} />
+                        </div>
+                        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                          <input value={lessonDraft.title_ka} onChange={(e) => setLessonDraft((f: any) => ({ ...f, title_ka: e.target.value }))} placeholder="Lesson title (KA)" className={`rounded-xl border px-3 py-2 text-sm ${inputClass}`} />
+                          <input value={lessonDraft.duration_seconds} onChange={(e) => setLessonDraft((f: any) => ({ ...f, duration_seconds: e.target.value }))} placeholder="Duration (seconds)" className={`rounded-xl border px-3 py-2 text-sm ${inputClass}`} />
+                        </div>
 
-                  <textarea rows={4} placeholder="Course overview, learning objectives, and format details..." className="rounded-xl border border-[var(--line)] px-4 py-3 text-sm outline-none" />
+                        <div className="mt-3 grid gap-3 lg:grid-cols-2">
+                          <textarea value={lessonDraft.description_en} onChange={(e) => setLessonDraft((f: any) => ({ ...f, description_en: e.target.value }))} rows={3} placeholder="Description EN" className={`rounded-xl border px-3 py-2 text-sm outline-none ${isDark ? 'border-white/12 bg-white/5 text-white placeholder:text-white/35' : 'border-[var(--line)] bg-white'}`} />
+                          <div className="space-y-3">
+                            <textarea value={lessonDraft.description_ka} onChange={(e) => setLessonDraft((f: any) => ({ ...f, description_ka: e.target.value }))} rows={2} placeholder="Description KA (optional)" className={`w-full rounded-xl border px-3 py-2 text-sm outline-none ${isDark ? 'border-white/12 bg-white/5 text-white placeholder:text-white/35' : 'border-[var(--line)] bg-white'}`} />
+                            <textarea value={lessonDraft.description_ru} onChange={(e) => setLessonDraft((f: any) => ({ ...f, description_ru: e.target.value }))} rows={2} placeholder="Description RU (optional)" className={`w-full rounded-xl border px-3 py-2 text-sm outline-none ${isDark ? 'border-white/12 bg-white/5 text-white placeholder:text-white/35' : 'border-[var(--line)] bg-white'}`} />
+                          </div>
+                        </div>
 
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      onClick={async () => {
-                        if (!token) return
-                        try {
-                          const selectedCategory = data?.categories?.find?.((c: any) => c.slug === newCourse.category_slug)
-                          const res = await api.createMyCourse(
-                            {
-                              type: newCourse.type,
-                              category_id: selectedCategory?.id,
-                              title: { en: newCourse.title_en, ka: newCourse.title_ka, ru: newCourse.title_ru },
-                              short_description: { en: 'Created from instructor dashboard', ka: 'შექმნილია კაბინეტიდან', ru: 'Создано из кабинета' },
-                              description: { en: 'Course description', ka: 'კურსის აღწერა', ru: 'Описание курса' },
-                              price_amount: Number(newCourse.price_amount || 0),
-                              currency: 'USD',
-                              status: newCourse.status,
-                              language_codes: ['en', 'ka', 'ru'],
-                            },
-                            token,
-                          )
-                          if (res.course?.id) {
-                            await api.createMyLesson(
-                              res.course.id,
-                              {
-                                title: { en: 'Lesson 1', ka: 'გაკვეთილი 1', ru: 'Урок 1' },
-                                description: { en: 'Intro lesson', ka: 'შესავალი', ru: 'Вводный урок' },
-                                is_preview: true,
-                              },
-                              token,
-                            )
-                          }
-                          const refreshed = await api.meInstructorProfile(token)
-                          setData(refreshed)
-                          setMessage('Course and first lesson created')
-                          setParams({ tab: 'courses' })
-                        } catch (e: any) {
-                          setMessage(e.message)
-                        }
-                      }}
-                      className="rounded-xl bg-black px-4 py-3 text-sm font-semibold text-white"
-                    >
-                      Create course
-                    </button>
-                    <button type="button" className="rounded-xl border border-[var(--line)] px-4 py-3 text-sm font-semibold">
-                      Save draft flow
-                    </button>
-                  </div>
-                  {message ? <p className="text-sm text-[var(--muted)]">{message}</p> : null}
+                        <div className="mt-3 grid gap-3 lg:grid-cols-[1fr_1fr_auto]">
+                          <input value={lessonDraft.cover_image_url} onChange={(e) => setLessonDraft((f: any) => ({ ...f, cover_image_url: e.target.value }))} placeholder="Cover image URL (optional)" className={`rounded-xl border px-3 py-2 text-sm ${inputClass}`} />
+                          <input value={lessonDraft.video_url} onChange={(e) => setLessonDraft((f: any) => ({ ...f, video_url: e.target.value }))} placeholder="Video URL (optional)" className={`rounded-xl border px-3 py-2 text-sm ${inputClass}`} />
+                          <div className="grid grid-cols-2 gap-2">
+                            <label className={`flex items-center justify-center gap-2 rounded-xl border px-3 py-2 text-xs ${outlineBtnClass}`}>
+                              <input type="checkbox" checked={!!lessonDraft.is_preview} onChange={(e) => setLessonDraft((f: any) => ({ ...f, is_preview: e.target.checked }))} />
+                              Preview
+                            </label>
+                            <label className={`flex items-center justify-center gap-2 rounded-xl border px-3 py-2 text-xs ${outlineBtnClass}`}>
+                              <input type="checkbox" checked={!!lessonDraft.is_published} onChange={(e) => setLessonDraft((f: any) => ({ ...f, is_published: e.target.checked }))} />
+                              Published
+                            </label>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className={`rounded-[16px] border p-4 ${isDark ? 'border-white/10 bg-[#0a0f17]' : 'border-[var(--line)] bg-white'}`}>
+                        <div className="mb-3 flex items-center justify-between gap-2">
+                          <h5 className="text-sm font-semibold">Uploads (cover / video / materials)</h5>
+                          <span className={`text-xs ${mutedText}`}>Files are uploaded to backend storage. If media URL opens but image doesn’t display, check `php artisan storage:link`.</span>
+                        </div>
+                        <div className="grid gap-3 lg:grid-cols-3">
+                          <div className={`rounded-[12px] border p-3 ${isDark ? 'border-white/10 bg-white/5' : 'border-[var(--line)] bg-[var(--paper-2)]'}`}>
+                            <label className={`mb-2 block text-[11px] font-semibold ${mutedText}`}>Cover image file</label>
+                            <input
+                              key={`cover-${fileInputResetKey}`}
+                              type="file"
+                              accept="image/*"
+                              onChange={(e) => setLessonFiles((f) => ({ ...f, cover: e.target.files?.[0] ?? null }))}
+                              className={`w-full rounded-xl border px-3 py-2 text-xs file:mr-2 file:rounded-full file:border-0 file:px-2.5 file:py-1 file:text-xs ${inputClass}`}
+                            />
+                            <p className={`mt-2 text-xs ${mutedText}`}>{lessonFiles.cover ? `Selected: ${lessonFiles.cover.name}` : selectedLesson?.cover_image_url ? 'Current cover exists' : 'No file selected'}</p>
+                          </div>
+                          <div className={`rounded-[12px] border p-3 ${isDark ? 'border-white/10 bg-white/5' : 'border-[var(--line)] bg-[var(--paper-2)]'}`}>
+                            <label className={`mb-2 block text-[11px] font-semibold ${mutedText}`}>Video lesson file</label>
+                            <input
+                              key={`video-${fileInputResetKey}`}
+                              type="file"
+                              accept="video/*"
+                              onChange={(e) => setLessonFiles((f) => ({ ...f, video: e.target.files?.[0] ?? null }))}
+                              className={`w-full rounded-xl border px-3 py-2 text-xs file:mr-2 file:rounded-full file:border-0 file:px-2.5 file:py-1 file:text-xs ${inputClass}`}
+                            />
+                            <p className={`mt-2 text-xs ${mutedText}`}>{lessonFiles.video ? `Selected: ${lessonFiles.video.name}` : selectedLesson?.video_url ? 'Current video exists' : 'No file selected'}</p>
+                          </div>
+                          <div className={`rounded-[12px] border p-3 ${isDark ? 'border-white/10 bg-white/5' : 'border-[var(--line)] bg-[var(--paper-2)]'}`}>
+                            <label className={`mb-2 block text-[11px] font-semibold ${mutedText}`}>Materials files</label>
+                            <input
+                              key={`materials-${fileInputResetKey}`}
+                              type="file"
+                              multiple
+                              onChange={(e) => setLessonFiles((f) => ({ ...f, materials: Array.from(e.target.files ?? []) }))}
+                              className={`w-full rounded-xl border px-3 py-2 text-xs file:mr-2 file:rounded-full file:border-0 file:px-2.5 file:py-1 file:text-xs ${inputClass}`}
+                            />
+                            <p className={`mt-2 text-xs ${mutedText}`}>
+                              {lessonFiles.materials.length
+                                ? `${lessonFiles.materials.length} selected`
+                                : selectedLesson?.materials?.length
+                                  ? `${selectedLesson.materials.length} current file(s)`
+                                  : 'No materials selected'}
+                            </p>
+                          </div>
+                        </div>
+                        {(lessonFiles.cover || lessonFiles.video || lessonFiles.materials.length) ? (
+                          <div className={`mt-3 rounded-[12px] border px-3 py-2 text-xs ${isDark ? 'border-white/10 bg-white/5 text-white/80' : 'border-[var(--line)] bg-[var(--paper-2)] text-[#555]'}`}>
+                            Pending upload: {lessonFiles.cover ? 'cover' : null}
+                            {lessonFiles.cover && lessonFiles.video ? ' + ' : null}
+                            {lessonFiles.video ? 'video' : null}
+                            {(lessonFiles.cover || lessonFiles.video) && lessonFiles.materials.length ? ' + ' : null}
+                            {lessonFiles.materials.length ? `${lessonFiles.materials.length} material(s)` : null}
+                          </div>
+                        ) : null}
+                      </div>
+
+                      <div className={`rounded-[16px] border p-4 ${isDark ? 'border-white/10 bg-[#0a0f17]' : 'border-[var(--line)] bg-white'}`}>
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <div>
+                            <h5 className="text-sm font-semibold">Actions</h5>
+                            <p className={`mt-1 text-xs ${mutedText}`}>{lessonEditorMode === 'edit' ? 'Save updates for selected lesson, or switch to new lesson mode.' : 'Create lesson and continue building curriculum.'}</p>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            {lessonEditorMode === 'edit' ? (
+                              <button type="button" disabled={lessonBusy} onClick={() => void saveLesson()} className={`rounded-xl px-4 py-2.5 text-sm font-semibold disabled:opacity-50 ${solidBtnClass}`}>
+                                {lessonBusy ? 'Saving...' : 'Save changes'}
+                              </button>
+                            ) : (
+                              <>
+                                <button type="button" disabled={lessonBusy} onClick={() => void saveLesson()} className={`rounded-xl px-4 py-2.5 text-sm font-semibold disabled:opacity-50 ${solidBtnClass}`}>
+                                  {lessonBusy ? 'Saving...' : 'Create lesson'}
+                                </button>
+                                <button type="button" disabled={lessonBusy} onClick={() => void saveLesson({ andAnother: true })} className={`rounded-xl border px-4 py-2.5 text-sm font-semibold disabled:opacity-50 ${outlineBtnClass}`}>
+                                  {lessonBusy ? 'Saving...' : 'Create + add another'}
+                                </button>
+                              </>
+                            )}
+                            <button type="button" onClick={() => resetLessonDraft()} className={`rounded-xl border px-4 py-2.5 text-sm font-semibold ${outlineBtnClass}`}>
+                              Reset form
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+
+                      {selectedLesson ? (
+                        <div className={`rounded-[16px] border p-4 ${isDark ? 'border-white/10 bg-[#0a0f17]' : 'border-[var(--line)] bg-white'}`}>
+                          <h5 className="text-sm font-semibold">Selected lesson preview</h5>
+                          <div className="mt-3 grid gap-3 lg:grid-cols-[220px_1fr]">
+                            <div className={`overflow-hidden rounded-[12px] border ${isDark ? 'border-white/10 bg-white/5' : 'border-[var(--line)] bg-[var(--paper-2)]'}`}>
+                              {selectedLesson.cover_image_url ? (
+                                <img src={selectedLesson.cover_image_url} alt="" className="h-[160px] w-full object-cover" />
+                              ) : (
+                                <div className={`grid h-[160px] place-items-center text-xs ${mutedText}`}>No cover image</div>
+                              )}
+                            </div>
+                            <div className={`rounded-[12px] border p-3 ${isDark ? 'border-white/10 bg-white/5' : 'border-[var(--line)] bg-[var(--paper-2)]'}`}>
+                              <p className="text-sm font-semibold">{textOf(selectedLesson.title, locale) || 'Untitled lesson'}</p>
+                              <p className={`mt-1 text-xs ${mutedText}`}>{selectedLesson.video_url ? 'Video attached' : 'Video URL/file not attached yet'} · {(selectedLesson.materials ?? []).length} material(s)</p>
+                              <div className={`mt-3 space-y-1 text-xs ${mutedText}`}>
+                                {(selectedLesson.materials ?? []).slice(0, 4).map((file: any, idx: number) => (
+                                  <p key={file.url || idx} className="truncate">• {file.name || file.url}</p>
+                                ))}
+                                {(selectedLesson.materials ?? []).length > 4 ? <p>…and {(selectedLesson.materials ?? []).length - 4} more</p> : null}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ) : null}
+                    </>
+                  )}
                 </div>
               </div>
             </div>
@@ -3638,21 +4482,21 @@ function InstructorDashboardPage() {
 
           {activeTab === 'payouts' ? (
             <div className="grid gap-5 xl:grid-cols-[1fr_1fr]">
-              <div className="rounded-[18px] border border-[var(--line)] bg-white p-5">
+              <div className={`rounded-[18px] border p-5 ${cardClass}`}>
                 <h3 className="text-lg font-bold">Payout account</h3>
-                <p className="mt-2 text-sm text-[var(--muted)]">Bank of Georgia payout integration will use this profile data and payout history view.</p>
+                <p className={`mt-2 text-sm ${mutedText}`}>Bank of Georgia payout integration will use this profile data and payout history view.</p>
                 <div className="mt-4 space-y-2 text-sm">
-                  <div className="rounded-[12px] bg-[var(--paper-2)] px-3 py-2">Method: Bank transfer</div>
-                  <div className="rounded-[12px] bg-[var(--paper-2)] px-3 py-2">Account: GE00TB1234567890000001</div>
-                  <div className="rounded-[12px] bg-[var(--paper-2)] px-3 py-2">Available balance: {money(stats.gross_revenue, 'USD')}</div>
+                  <div className={`rounded-[12px] px-3 py-2 ${softCardClass}`}>Method: Bank transfer</div>
+                  <div className={`rounded-[12px] px-3 py-2 ${softCardClass}`}>Account: GE00TB1234567890000001</div>
+                  <div className={`rounded-[12px] px-3 py-2 ${softCardClass}`}>Available balance: {money(stats.gross_revenue, 'USD')}</div>
                 </div>
               </div>
-              <div className="rounded-[18px] border border-[var(--line)] bg-white p-5">
+              <div className={`rounded-[18px] border p-5 ${cardClass}`}>
                 <h3 className="text-lg font-bold">Withdrawal actions</h3>
                 <div className="mt-4 space-y-3">
-                  <button type="button" className="w-full rounded-xl bg-black px-4 py-3 text-sm font-semibold text-white">Request payout</button>
-                  <button type="button" className="w-full rounded-xl border border-[var(--line)] px-4 py-3 text-sm font-semibold">Download revenue report</button>
-                  <button type="button" className="w-full rounded-xl border border-[var(--line)] px-4 py-3 text-sm font-semibold">Payment methods</button>
+                  <button type="button" className={`w-full rounded-xl px-4 py-3 text-sm font-semibold ${solidBtnClass}`}>Request payout</button>
+                  <button type="button" className={`w-full rounded-xl border px-4 py-3 text-sm font-semibold ${outlineBtnClass}`}>Download revenue report</button>
+                  <button type="button" className={`w-full rounded-xl border px-4 py-3 text-sm font-semibold ${outlineBtnClass}`}>Payment methods</button>
                 </div>
               </div>
             </div>
@@ -3665,18 +4509,57 @@ function InstructorDashboardPage() {
 }
 
 function AdminPage() {
-  const { token, user, locale } = useApp()
+  const { token, user, locale, theme } = useApp()
   const [stats, setStats] = useState<any>(null)
   const [users, setUsers] = useState<any[]>([])
   const [categories, setCategories] = useState<any[]>([])
   const [courses, setCourses] = useState<any[]>([])
   const [instructors, setInstructors] = useState<any[]>([])
   const [message, setMessage] = useState<string | null>(null)
-  const [userForm, setUserForm] = useState<any>({ name: '', email: '', password: 'Test12345!', role: 'student' })
-  const [categoryForm, setCategoryForm] = useState<any>({ slug: '', en: '', ka: '', ru: '' })
-  const [courseForm, setCourseForm] = useState<any>({ instructor_user_id: '', type: 'online', title_en: '', price_amount: '99' })
+  const [adminTab, setAdminTab] = useState<'overview' | 'users' | 'categories' | 'courses' | 'instructors'>('overview')
+  const [saving, setSaving] = useState(false)
 
-  const canAccess = user?.role === 'admin'
+  const [userForm, setUserForm] = useState<any>({ name: '', email: '', password: 'Test12345!', role: 'student', locale: 'en' })
+  const [categoryForm, setCategoryForm] = useState<any>({ slug: '', en: '', ka: '', ru: '', is_active: true, sort_order: 0 })
+  const [courseForm, setCourseForm] = useState<any>({
+    instructor_user_id: '',
+    category_id: '',
+    type: 'online',
+    title_en: '',
+    title_ka: '',
+    title_ru: '',
+    price_amount: '99',
+    status: 'draft',
+    is_featured: false,
+  })
+  const [instructorForm, setInstructorForm] = useState<any>({ status: 'pending', display_name: '', promo_video_url: '', hero_image_url: '' })
+
+  const [selectedUserId, setSelectedUserId] = useState<number | null>(null)
+  const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(null)
+  const [selectedCourseId, setSelectedCourseId] = useState<number | null>(null)
+  const [selectedInstructorId, setSelectedInstructorId] = useState<number | null>(null)
+
+  const isDark = theme === 'dark'
+  const canAccess = user?.role === 'admin' || user?.email?.toLowerCase() === 'alexander22122@gmail.com'
+  const panelClass = isDark ? 'border-white/10 bg-[#0c111a]/92 text-white' : 'border-[var(--line)] bg-white'
+  const subPanelClass = isDark ? 'border-white/10 bg-[#0a0f17] text-white' : 'border-[var(--line)] bg-white'
+  const inputClass = isDark
+    ? 'border-white/12 bg-white/5 text-white placeholder:text-white/35'
+    : 'border-[var(--line)] bg-white text-black placeholder:text-[#8c8c8c]'
+  const primaryBtnClass = isDark ? 'bg-white text-black' : 'bg-black text-white'
+  const outlineBtnClass = isDark ? 'border-white/12 bg-white/5 text-white' : 'border-[var(--line)] bg-white text-black'
+  const mutedText = isDark ? 'text-white/60' : 'text-[var(--muted)]'
+
+  const navBtn = (active: boolean) =>
+    `w-full rounded-[12px] border px-3 py-2.5 text-left text-sm transition ${
+      active
+        ? isDark
+          ? 'border-white/20 bg-white/10 text-white'
+          : 'border-black bg-black text-white'
+        : isDark
+          ? 'border-white/10 bg-transparent text-white/75 hover:bg-white/5 hover:text-white'
+          : 'border-[var(--line)] bg-white text-[#555] hover:text-black'
+    }`
 
   const load = async () => {
     if (!token || !canAccess) return
@@ -3702,200 +4585,668 @@ function AdminPage() {
   if (!user) return <GateCard title="Admin Panel" text="Login as admin to manage users, instructors, categories and courses." />
   if (!canAccess) return <GateCard title="Admin Panel" text="Only admin role can access this panel." />
 
+  const resetUserEditor = () => {
+    setSelectedUserId(null)
+    setUserForm({ name: '', email: '', password: 'Test12345!', role: 'student', locale: locale || 'en' })
+  }
+  const resetCategoryEditor = () => {
+    setSelectedCategoryId(null)
+    setCategoryForm({ slug: '', en: '', ka: '', ru: '', is_active: true, sort_order: 0 })
+  }
+  const resetCourseEditor = () => {
+    setSelectedCourseId(null)
+    setCourseForm({
+      instructor_user_id: instructors[0]?.id ? String(instructors[0].id) : '',
+      category_id: categories[0]?.id ? String(categories[0].id) : '',
+      type: 'online',
+      title_en: '',
+      title_ka: '',
+      title_ru: '',
+      price_amount: '99',
+      status: 'draft',
+      is_featured: false,
+    })
+  }
+  const resetInstructorEditor = () => {
+    setSelectedInstructorId(null)
+    setInstructorForm({ status: 'pending', display_name: '', promo_video_url: '', hero_image_url: '' })
+  }
+
+  const pickUser = (u: any) => {
+    setSelectedUserId(u.id)
+    setUserForm({
+      name: u.name ?? '',
+      email: u.email ?? '',
+      password: '',
+      role: u.role ?? 'student',
+      locale: u.locale ?? 'en',
+      headline: u.headline ?? '',
+      avatar_url: u.avatar_url ?? '',
+    })
+  }
+  const pickCategory = (c: any) => {
+    setSelectedCategoryId(c.id)
+    setCategoryForm({
+      slug: c.slug ?? '',
+      en: c.name?.en ?? '',
+      ka: c.name?.ka ?? '',
+      ru: c.name?.ru ?? '',
+      is_active: c.is_active ?? true,
+      sort_order: c.sort_order ?? 0,
+    })
+  }
+  const pickCourse = (c: any) => {
+    setSelectedCourseId(c.id)
+    setCourseForm({
+      instructor_user_id: c.instructor_user_id ? String(c.instructor_user_id) : c.instructor?.id ? String(c.instructor.id) : '',
+      category_id: c.category_id ? String(c.category_id) : c.category?.id ? String(c.category.id) : '',
+      type: c.type ?? 'online',
+      title_en: c.title?.en ?? '',
+      title_ka: c.title?.ka ?? '',
+      title_ru: c.title?.ru ?? '',
+      price_amount: String(c.price_amount ?? 0),
+      sale_price_amount: c.sale_price_amount != null ? String(c.sale_price_amount) : '',
+      status: c.status ?? 'draft',
+      is_featured: !!c.is_featured,
+    })
+  }
+  const pickInstructor = (ins: any) => {
+    setSelectedInstructorId(ins.id)
+    setInstructorForm({
+      status: ins.instructor_profile?.status ?? 'pending',
+      display_name: ins.instructor_profile?.display_name ?? ins.name ?? '',
+      promo_video_url: ins.instructor_profile?.promo_video_url ?? '',
+      hero_image_url: ins.instructor_profile?.hero_image_url ?? '',
+    })
+  }
+
+  const navItems: Array<{ key: typeof adminTab; label: string; hint: string }> = [
+    { key: 'overview', label: 'Overview', hint: 'Analytics and system health' },
+    { key: 'users', label: 'Users', hint: 'List + edit users' },
+    { key: 'categories', label: 'Categories', hint: 'Taxonomy management' },
+    { key: 'courses', label: 'Courses', hint: 'List + edit courses' },
+    { key: 'instructors', label: 'Instructors', hint: 'Moderation and profiles' },
+  ]
+
+  const roleCounts = useMemo(() => {
+    const map = { admin: 0, instructor: 0, student: 0 } as Record<string, number>
+    for (const u of users) map[u.role] = (map[u.role] ?? 0) + 1
+    return map
+  }, [users])
+
+  const courseStatusCounts = useMemo(() => {
+    const map = { draft: 0, published: 0, archived: 0 } as Record<string, number>
+    for (const c of courses) map[c.status || 'draft'] = (map[c.status || 'draft'] ?? 0) + 1
+    return map
+  }, [courses])
+
+  const monthlyRevenueProxy = useMemo(() => {
+    const top = [...courses].slice(0, 8).reverse()
+    return {
+      labels: top.map((c, idx) => textOf(c.title, locale) || `Course ${idx + 1}`).map((v) => (v.length > 12 ? `${v.slice(0, 12)}…` : v)),
+      values: top.map((c) => Number(c.sale_price_amount ?? c.price_amount ?? 0)),
+    }
+  }, [courses, locale])
+
+  const chartText = isDark ? '#E8EDF7' : '#161616'
+  const chartGrid = isDark ? 'rgba(255,255,255,0.09)' : 'rgba(0,0,0,0.08)'
+  const chartAccent1 = 'rgba(62, 115, 156, 0.9)'
+  const chartAccent2 = 'rgba(138, 66, 48, 0.9)'
+  const chartAccent3 = 'rgba(74, 106, 46, 0.9)'
+
+  const dataListBoxClass = `${subPanelClass} rounded-[16px] border p-4`
+  const editorBoxClass = `${panelClass} rounded-[16px] border p-4`
+  const rowClass = (active: boolean) =>
+    `rounded-[12px] border p-3 transition ${
+      active
+        ? isDark
+          ? 'border-white/20 bg-white/10'
+          : 'border-black bg-black text-white'
+        : isDark
+          ? 'border-white/10 bg-white/5'
+          : 'border-[var(--line)] bg-[var(--paper-2)]'
+    }`
+
+  const submitUser = async () => {
+    if (!token) return
+    setSaving(true)
+    setMessage(null)
+    try {
+      if (selectedUserId) {
+        const payload: any = {
+          name: userForm.name,
+          email: userForm.email,
+          role: userForm.role,
+          locale: userForm.locale,
+          headline: userForm.headline || null,
+          avatar_url: userForm.avatar_url || null,
+        }
+        if (userForm.password) payload.password = userForm.password
+        await api.adminUpdateUser(selectedUserId, payload, token)
+        setMessage('User updated')
+      } else {
+        await api.adminCreateUser(
+          {
+            name: userForm.name,
+            email: userForm.email,
+            password: userForm.password,
+            role: userForm.role,
+            locale: userForm.locale,
+            headline: userForm.headline || undefined,
+          },
+          token,
+        )
+        setMessage('User created')
+      }
+      await load()
+    } catch (e: any) {
+      setMessage(e.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const submitCategory = async () => {
+    if (!token) return
+    setSaving(true)
+    setMessage(null)
+    try {
+      const payload = {
+        slug: categoryForm.slug,
+        name: { en: categoryForm.en, ka: categoryForm.ka, ru: categoryForm.ru },
+        sort_order: Number(categoryForm.sort_order || 0),
+        is_active: !!categoryForm.is_active,
+      }
+      if (selectedCategoryId) {
+        await api.adminUpdateCategory(selectedCategoryId, payload, token)
+        setMessage('Category updated')
+      } else {
+        await api.adminCreateCategory(payload, token)
+        setMessage('Category created')
+      }
+      await load()
+    } catch (e: any) {
+      setMessage(e.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const submitCourse = async () => {
+    if (!token) return
+    setSaving(true)
+    setMessage(null)
+    try {
+      const payload = {
+        instructor_user_id: Number(courseForm.instructor_user_id),
+        category_id: courseForm.category_id ? Number(courseForm.category_id) : null,
+        type: courseForm.type,
+        title: {
+          en: courseForm.title_en || 'New course',
+          ka: courseForm.title_ka || courseForm.title_en || 'ახალი კურსი',
+          ru: courseForm.title_ru || courseForm.title_en || 'Новый курс',
+        },
+        short_description: { en: 'Admin managed course', ka: 'ადმინის კურსი', ru: 'Курс админа' },
+        description: { en: 'Admin managed course', ka: 'ადმინის კურსი', ru: 'Курс админа' },
+        price_amount: Number(courseForm.price_amount || 0),
+        sale_price_amount: courseForm.sale_price_amount ? Number(courseForm.sale_price_amount) : null,
+        currency: 'USD',
+        status: courseForm.status,
+        is_featured: !!courseForm.is_featured,
+        language_codes: ['en', 'ka', 'ru'],
+      }
+      if (selectedCourseId) {
+        await api.adminUpdateCourse(selectedCourseId, payload, token)
+        setMessage('Course updated')
+      } else {
+        await api.adminCreateCourse(payload, token)
+        setMessage('Course created')
+      }
+      await load()
+    } catch (e: any) {
+      setMessage(e.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const submitInstructor = async () => {
+    if (!token || !selectedInstructorId) return
+    setSaving(true)
+    setMessage(null)
+    try {
+      await api.adminUpdateInstructor(
+        selectedInstructorId,
+        {
+          status: instructorForm.status,
+          display_name: instructorForm.display_name || null,
+          promo_video_url: instructorForm.promo_video_url || null,
+          hero_image_url: instructorForm.hero_image_url || null,
+        },
+        token,
+      )
+      setMessage('Instructor updated')
+      await load()
+    } catch (e: any) {
+      setMessage(e.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
   return (
     <>
-      <PageSection title="Admin Panel" subtitle="Control users, instructors, courses and categories." />
-      <div className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
-        <div className="space-y-6">
-          <div className="rounded-[18px] border border-[var(--line)] bg-white p-5">
-            <h2 className="text-lg font-bold">Stats</h2>
-            <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
-              {Object.entries(stats || {}).map(([k, v]) => (
-                <div key={k} className="rounded-xl bg-[var(--paper-2)] p-3">
-                  <p className="text-xs text-[var(--muted)]">{k}</p>
-                  <p className="text-lg font-bold">{String(v)}</p>
-                </div>
-              ))}
-            </div>
-          </div>
+      <PageSection title="Admin Panel" subtitle="Classic admin layout: menu on the left, analytics first, lists and edit panels on the right." />
 
-          <div className="rounded-[18px] border border-[var(--line)] bg-white p-5">
-            <h2 className="text-lg font-bold">Create user</h2>
-            <div className="mt-4 grid gap-3 sm:grid-cols-2">
-              <input value={userForm.name} onChange={(e) => setUserForm((f: any) => ({ ...f, name: e.target.value }))} placeholder="Name" className="rounded-xl border border-[var(--line)] px-4 py-3" />
-              <input value={userForm.email} onChange={(e) => setUserForm((f: any) => ({ ...f, email: e.target.value }))} placeholder="Email" className="rounded-xl border border-[var(--line)] px-4 py-3" />
-              <input value={userForm.password} onChange={(e) => setUserForm((f: any) => ({ ...f, password: e.target.value }))} placeholder="Password" className="rounded-xl border border-[var(--line)] px-4 py-3" />
-              <select value={userForm.role} onChange={(e) => setUserForm((f: any) => ({ ...f, role: e.target.value }))} className="rounded-xl border border-[var(--line)] px-4 py-3">
-                <option value="student">student</option>
-                <option value="instructor">instructor</option>
-                <option value="admin">admin</option>
-              </select>
-              <button
-                onClick={async () => {
-                  if (!token) return
-                  try {
-                    await api.adminCreateUser({ ...userForm, locale }, token)
-                    setMessage('User created')
-                    await load()
-                  } catch (e: any) {
-                    setMessage(e.message)
-                  }
-                }}
-                className="sm:col-span-2 rounded-xl bg-black px-4 py-3 text-sm font-semibold text-white"
-              >
-                Create user
+      <div className="grid gap-6 xl:grid-cols-[280px_minmax(0,1fr)]">
+        <aside className={`h-fit rounded-[18px] border p-4 xl:sticky xl:top-24 ${panelClass}`}>
+          <div className={`rounded-[14px] border p-4 ${isDark ? 'border-white/10 bg-white/5' : 'border-[var(--line)] bg-[var(--paper-2)]'}`}>
+            <p className={`text-[10px] font-semibold tracking-[0.16em] uppercase ${mutedText}`}>Admin Workspace</p>
+            <p className="mt-2 text-lg font-bold">Happytality Control</p>
+            <p className={`mt-1 text-xs ${mutedText}`}>{user.email}</p>
+          </div>
+          <div className="mt-4 space-y-2">
+            {navItems.map((item) => (
+              <button key={item.key} type="button" onClick={() => setAdminTab(item.key)} className={navBtn(adminTab === item.key)}>
+                <p className="font-semibold">{item.label}</p>
+                <p className={`mt-1 text-xs ${adminTab === item.key && !isDark ? 'text-white/85' : mutedText}`}>{item.hint}</p>
               </button>
-            </div>
+            ))}
           </div>
+          <button type="button" onClick={() => void load()} className={`mt-4 w-full rounded-xl border px-4 py-2.5 text-sm font-semibold ${outlineBtnClass}`}>
+            Refresh all data
+          </button>
+        </aside>
 
-          <div className="rounded-[18px] border border-[var(--line)] bg-white p-5">
-            <h2 className="text-lg font-bold">Create category</h2>
-            <div className="mt-4 grid gap-3">
-              <input value={categoryForm.slug} onChange={(e) => setCategoryForm((f: any) => ({ ...f, slug: e.target.value }))} placeholder="slug" className="rounded-xl border border-[var(--line)] px-4 py-3" />
-              <div className="grid gap-3 sm:grid-cols-3">
-                <input value={categoryForm.en} onChange={(e) => setCategoryForm((f: any) => ({ ...f, en: e.target.value }))} placeholder="Name EN" className="rounded-xl border border-[var(--line)] px-4 py-3" />
-                <input value={categoryForm.ka} onChange={(e) => setCategoryForm((f: any) => ({ ...f, ka: e.target.value }))} placeholder="Name KA" className="rounded-xl border border-[var(--line)] px-4 py-3" />
-                <input value={categoryForm.ru} onChange={(e) => setCategoryForm((f: any) => ({ ...f, ru: e.target.value }))} placeholder="Name RU" className="rounded-xl border border-[var(--line)] px-4 py-3" />
-              </div>
-              <button
-                onClick={async () => {
-                  if (!token) return
-                  try {
-                    await api.adminCreateCategory({ slug: categoryForm.slug, name: { en: categoryForm.en, ka: categoryForm.ka, ru: categoryForm.ru } }, token)
-                    setMessage('Category created')
-                    await load()
-                  } catch (e: any) {
-                    setMessage(e.message)
-                  }
-                }}
-                className="rounded-xl bg-black px-4 py-3 text-sm font-semibold text-white"
-              >
-                Create category
-              </button>
+        <div className="space-y-5">
+          {message ? (
+            <div className={`rounded-[14px] border px-4 py-3 text-sm ${isDark ? 'border-white/10 bg-white/5 text-white/90' : 'border-[var(--line)] bg-[var(--paper-2)] text-[#444]'}`}>
+              {message}
             </div>
-          </div>
-        </div>
+          ) : null}
 
-        <div className="space-y-6">
-          <div className="rounded-[18px] border border-[var(--line)] bg-white p-5">
-            <h2 className="text-lg font-bold">Create course (admin)</h2>
-            <div className="mt-4 grid gap-3">
-              <select value={courseForm.instructor_user_id} onChange={(e) => setCourseForm((f: any) => ({ ...f, instructor_user_id: e.target.value }))} className="rounded-xl border border-[var(--line)] px-4 py-3">
-                <option value="">Select instructor</option>
-                {instructors.map((ins) => (
-                  <option key={ins.id} value={ins.id}>{ins.name}</option>
-                ))}
-              </select>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <select value={courseForm.type} onChange={(e) => setCourseForm((f: any) => ({ ...f, type: e.target.value }))} className="rounded-xl border border-[var(--line)] px-4 py-3">
-                  <option value="online">online</option>
-                  <option value="offline">offline</option>
-                </select>
-                <input value={courseForm.price_amount} onChange={(e) => setCourseForm((f: any) => ({ ...f, price_amount: e.target.value }))} placeholder="Price" className="rounded-xl border border-[var(--line)] px-4 py-3" />
-              </div>
-              <input value={courseForm.title_en} onChange={(e) => setCourseForm((f: any) => ({ ...f, title_en: e.target.value }))} placeholder="Title EN" className="rounded-xl border border-[var(--line)] px-4 py-3" />
-              <button
-                onClick={async () => {
-                  if (!token) return
-                  try {
-                    await api.adminCreateCourse(
-                      {
-                        instructor_user_id: Number(courseForm.instructor_user_id),
-                        category_id: categories[0]?.id,
-                        type: courseForm.type,
-                        title: { en: courseForm.title_en || 'New course', ka: courseForm.title_en || 'ახალი კურსი', ru: courseForm.title_en || 'Новый курс' },
-                        short_description: { en: 'Admin created course', ka: 'ადმინის მიერ შექმნილი კურსი', ru: 'Курс, созданный админом' },
-                        description: { en: 'Admin created course', ka: 'ადმინის მიერ შექმნილი კურსი', ru: 'Курс, созданный админом' },
-                        price_amount: Number(courseForm.price_amount || 0),
-                        currency: 'USD',
-                        status: 'published',
-                        language_codes: ['en', 'ka', 'ru'],
-                      },
-                      token,
-                    )
-                    setMessage('Course created')
-                    await load()
-                  } catch (e: any) {
-                    setMessage(e.message)
-                  }
-                }}
-                className="rounded-xl bg-black px-4 py-3 text-sm font-semibold text-white"
-              >
-                Create course
-              </button>
-              {message ? <p className="text-sm text-[var(--muted)]">{message}</p> : null}
-            </div>
-          </div>
-
-          <div className="rounded-[18px] border border-[var(--line)] bg-white p-5">
-            <h2 className="text-lg font-bold">Instructors moderation</h2>
-            <div className="mt-4 space-y-3 max-h-[260px] overflow-auto pr-1">
-              {instructors.map((ins) => (
-                <div key={ins.id} className="flex items-center justify-between gap-3 rounded-xl border border-[var(--line)] p-3">
+          {adminTab === 'overview' ? (
+            <>
+              <div className={`rounded-[18px] border p-5 ${panelClass}`}>
+                <div className="mb-4 flex items-center justify-between gap-3">
                   <div>
-                    <p className="text-sm font-semibold">{ins.name}</p>
-                    <p className="text-xs text-[var(--muted)]">{ins.instructor_profile?.status || 'pending'}</p>
+                    <p className={`text-[10px] font-semibold tracking-[0.18em] uppercase ${mutedText}`}>Analytics</p>
+                    <h2 className="mt-1 text-xl font-bold">Dashboard overview</h2>
                   </div>
-                  <button
-                    onClick={async () => {
-                      if (!token) return
-                      try {
-                        await api.adminUpdateInstructor(ins.id, { status: 'approved' }, token)
-                        await load()
-                      } catch (e: any) {
-                        setMessage(e.message)
-                      }
-                    }}
-                    className="rounded-full bg-black px-3 py-2 text-xs font-semibold text-white"
-                  >
-                    Approve
+                </div>
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
+                  {Object.entries(stats || {}).map(([k, v]) => (
+                    <div key={k} className={`rounded-xl border p-3 ${isDark ? 'border-white/10 bg-[#090d14]' : 'border-[var(--line)] bg-[var(--paper-2)]'}`}>
+                      <p className={`text-xs capitalize ${mutedText}`}>{k.replaceAll('_', ' ')}</p>
+                      <p className="mt-1 text-lg font-bold">{String(v)}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="grid gap-5 xl:grid-cols-[1.05fr_0.95fr]">
+                <div className={`rounded-[18px] border p-5 ${panelClass}`}>
+                  <h3 className="text-base font-bold">Course price trend (recent)</h3>
+                  <div className="mt-4 h-[280px]">
+                    <Line
+                      data={{
+                        labels: monthlyRevenueProxy.labels,
+                        datasets: [
+                          {
+                            label: 'Price',
+                            data: monthlyRevenueProxy.values,
+                            borderColor: chartAccent1,
+                            backgroundColor: 'rgba(62,115,156,0.22)',
+                            fill: true,
+                            tension: 0.35,
+                          },
+                        ],
+                      }}
+                      options={{
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { labels: { color: chartText } } },
+                        scales: {
+                          x: { ticks: { color: chartText }, grid: { color: chartGrid } },
+                          y: { ticks: { color: chartText }, grid: { color: chartGrid } },
+                        },
+                      }}
+                    />
+                  </div>
+                </div>
+
+                <div className="grid gap-5">
+                  <div className={`rounded-[18px] border p-5 ${panelClass}`}>
+                    <h3 className="text-base font-bold">Users by role</h3>
+                    <div className="mt-4 h-[220px]">
+                      <Doughnut
+                        data={{
+                          labels: ['Students', 'Instructors', 'Admins'],
+                          datasets: [
+                            {
+                              data: [roleCounts.student ?? 0, roleCounts.instructor ?? 0, roleCounts.admin ?? 0],
+                              backgroundColor: [chartAccent1, chartAccent3, chartAccent2],
+                              borderColor: isDark ? '#0c111a' : '#ffffff',
+                              borderWidth: 2,
+                            },
+                          ],
+                        }}
+                        options={{
+                          responsive: true,
+                          maintainAspectRatio: false,
+                          plugins: { legend: { labels: { color: chartText } } },
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  <div className={`rounded-[18px] border p-5 ${panelClass}`}>
+                    <h3 className="text-base font-bold">Courses by status</h3>
+                    <div className="mt-4 h-[220px]">
+                      <Bar
+                        data={{
+                          labels: ['Draft', 'Published', 'Archived'],
+                          datasets: [
+                            {
+                              label: 'Courses',
+                              data: [courseStatusCounts.draft ?? 0, courseStatusCounts.published ?? 0, courseStatusCounts.archived ?? 0],
+                              backgroundColor: [chartAccent2, chartAccent1, chartAccent3],
+                              borderRadius: 8,
+                            },
+                          ],
+                        }}
+                        options={{
+                          responsive: true,
+                          maintainAspectRatio: false,
+                          plugins: { legend: { labels: { color: chartText } } },
+                          scales: {
+                            x: { ticks: { color: chartText }, grid: { display: false } },
+                            y: { ticks: { color: chartText }, grid: { color: chartGrid } },
+                          },
+                        }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </>
+          ) : null}
+
+          {adminTab === 'users' ? (
+            <div className="grid gap-5 xl:grid-cols-[1.05fr_0.95fr]">
+              <div className={dataListBoxClass}>
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <h3 className="text-base font-bold">Users list</h3>
+                  <button type="button" onClick={resetUserEditor} className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${outlineBtnClass}`}>+ New user</button>
+                </div>
+                <div className="max-h-[620px] space-y-2 overflow-auto pr-1">
+                  {users.map((u) => (
+                    <div key={u.id} className={rowClass(selectedUserId === u.id)}>
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold">{u.name}</p>
+                          <p className={`truncate text-xs ${selectedUserId === u.id && !isDark ? 'text-white/80' : mutedText}`}>{u.email}</p>
+                          <p className={`mt-1 text-[11px] uppercase ${selectedUserId === u.id && !isDark ? 'text-white/85' : mutedText}`}>{u.role}</p>
+                        </div>
+                        <button type="button" onClick={() => pickUser(u)} className={`rounded-full border px-3 py-1 text-[10px] font-semibold uppercase ${selectedUserId === u.id && !isDark ? 'border-white/20 bg-white/10 text-white' : outlineBtnClass}`}>
+                          Edit
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className={editorBoxClass}>
+                <div className="mb-3 flex items-center justify-between gap-2">
+                  <h3 className="text-base font-bold">{selectedUserId ? 'Edit user' : 'Create user'}</h3>
+                  {selectedUserId ? <button type="button" onClick={resetUserEditor} className={`rounded-full border px-3 py-1.5 text-xs ${outlineBtnClass}`}>Close</button> : null}
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <input value={userForm.name} onChange={(e) => setUserForm((f: any) => ({ ...f, name: e.target.value }))} placeholder="Name" className={`rounded-xl border px-4 py-3 ${inputClass}`} />
+                  <input value={userForm.email} onChange={(e) => setUserForm((f: any) => ({ ...f, email: e.target.value }))} placeholder="Email" className={`rounded-xl border px-4 py-3 ${inputClass}`} />
+                  <input value={userForm.password} onChange={(e) => setUserForm((f: any) => ({ ...f, password: e.target.value }))} placeholder={selectedUserId ? 'Password (optional)' : 'Password'} className={`rounded-xl border px-4 py-3 ${inputClass}`} />
+                  <select value={userForm.role} onChange={(e) => setUserForm((f: any) => ({ ...f, role: e.target.value }))} className={`rounded-xl border px-4 py-3 ${inputClass}`}>
+                    <option value="student">student</option>
+                    <option value="instructor">instructor</option>
+                    <option value="admin">admin</option>
+                  </select>
+                  <select value={userForm.locale} onChange={(e) => setUserForm((f: any) => ({ ...f, locale: e.target.value }))} className={`rounded-xl border px-4 py-3 ${inputClass}`}>
+                    <option value="en">EN</option>
+                    <option value="ka">KA</option>
+                    <option value="ru">RU</option>
+                  </select>
+                  <input value={userForm.headline || ''} onChange={(e) => setUserForm((f: any) => ({ ...f, headline: e.target.value }))} placeholder="Headline (optional)" className={`rounded-xl border px-4 py-3 ${inputClass}`} />
+                  <input value={userForm.avatar_url || ''} onChange={(e) => setUserForm((f: any) => ({ ...f, avatar_url: e.target.value }))} placeholder="Avatar URL (optional)" className={`rounded-xl border px-4 py-3 sm:col-span-2 ${inputClass}`} />
+                  <button type="button" disabled={saving} onClick={() => void submitUser()} className={`rounded-xl px-4 py-3 text-sm font-semibold sm:col-span-2 ${primaryBtnClass} disabled:opacity-60`}>
+                    {saving ? 'Saving...' : selectedUserId ? 'Save user changes' : 'Create user'}
                   </button>
                 </div>
-              ))}
+              </div>
             </div>
-          </div>
+          ) : null}
 
-          <div className="rounded-[18px] border border-[var(--line)] bg-white p-5">
-            <h2 className="text-lg font-bold">Recent courses</h2>
-            <div className="mt-4 space-y-2 max-h-[260px] overflow-auto pr-1">
-              {courses.map((course) => (
-                <div key={course.id} className="rounded-xl border border-[var(--line)] p-3 text-sm">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="font-semibold">{textOf(course.title, locale)}</p>
-                      <p className="text-xs text-[var(--muted)]">{course.instructor?.name} · {course.status}</p>
+          {adminTab === 'categories' ? (
+            <div className="grid gap-5 xl:grid-cols-[1.05fr_0.95fr]">
+              <div className={dataListBoxClass}>
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <h3 className="text-base font-bold">Categories list</h3>
+                  <button type="button" onClick={resetCategoryEditor} className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${outlineBtnClass}`}>+ New category</button>
+                </div>
+                <div className="max-h-[620px] space-y-2 overflow-auto pr-1">
+                  {categories.map((c) => (
+                    <div key={c.id} className={rowClass(selectedCategoryId === c.id)}>
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold">{textOf(c.name, locale)}</p>
+                          <p className={`text-xs ${selectedCategoryId === c.id && !isDark ? 'text-white/80' : mutedText}`}>{c.slug}</p>
+                          <p className={`mt-1 text-[11px] uppercase ${selectedCategoryId === c.id && !isDark ? 'text-white/85' : mutedText}`}>{c.is_active ? 'active' : 'inactive'}</p>
+                        </div>
+                        <button type="button" onClick={() => pickCategory(c)} className={`rounded-full border px-3 py-1 text-[10px] font-semibold uppercase ${selectedCategoryId === c.id && !isDark ? 'border-white/20 bg-white/10 text-white' : outlineBtnClass}`}>Edit</button>
+                      </div>
                     </div>
-                    <span className="text-xs font-semibold">{money(course.sale_price_amount ?? course.price_amount, course.currency || 'USD')}</span>
-                  </div>
+                  ))}
                 </div>
-              ))}
+              </div>
+              <div className={editorBoxClass}>
+                <div className="mb-3 flex items-center justify-between gap-2">
+                  <h3 className="text-base font-bold">{selectedCategoryId ? 'Edit category' : 'Create category'}</h3>
+                  {selectedCategoryId ? <button type="button" onClick={resetCategoryEditor} className={`rounded-full border px-3 py-1.5 text-xs ${outlineBtnClass}`}>Close</button> : null}
+                </div>
+                <div className="grid gap-3">
+                  <input value={categoryForm.slug} onChange={(e) => setCategoryForm((f: any) => ({ ...f, slug: e.target.value }))} placeholder="Slug" className={`rounded-xl border px-4 py-3 ${inputClass}`} />
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <input value={categoryForm.en} onChange={(e) => setCategoryForm((f: any) => ({ ...f, en: e.target.value }))} placeholder="Name EN" className={`rounded-xl border px-4 py-3 ${inputClass}`} />
+                    <input value={categoryForm.ka} onChange={(e) => setCategoryForm((f: any) => ({ ...f, ka: e.target.value }))} placeholder="Name KA" className={`rounded-xl border px-4 py-3 ${inputClass}`} />
+                    <input value={categoryForm.ru} onChange={(e) => setCategoryForm((f: any) => ({ ...f, ru: e.target.value }))} placeholder="Name RU" className={`rounded-xl border px-4 py-3 ${inputClass}`} />
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <input type="number" value={categoryForm.sort_order} onChange={(e) => setCategoryForm((f: any) => ({ ...f, sort_order: e.target.value }))} placeholder="Sort order" className={`rounded-xl border px-4 py-3 ${inputClass}`} />
+                    <label className={`flex items-center gap-2 rounded-xl border px-4 py-3 text-sm ${outlineBtnClass}`}>
+                      <input type="checkbox" checked={!!categoryForm.is_active} onChange={(e) => setCategoryForm((f: any) => ({ ...f, is_active: e.target.checked }))} />
+                      Active
+                    </label>
+                  </div>
+                  <button type="button" disabled={saving} onClick={() => void submitCategory()} className={`rounded-xl px-4 py-3 text-sm font-semibold ${primaryBtnClass} disabled:opacity-60`}>
+                    {saving ? 'Saving...' : selectedCategoryId ? 'Save category changes' : 'Create category'}
+                  </button>
+                </div>
+              </div>
             </div>
-          </div>
+          ) : null}
 
-          <div className="rounded-[18px] border border-[var(--line)] bg-white p-5">
-            <h2 className="text-lg font-bold">Recent users</h2>
-            <div className="mt-4 space-y-2 max-h-[220px] overflow-auto pr-1">
-              {users.map((u) => (
-                <div key={u.id} className="flex items-center justify-between gap-3 rounded-xl border border-[var(--line)] p-3 text-sm">
-                  <div>
-                    <p className="font-semibold">{u.name}</p>
-                    <p className="text-xs text-[var(--muted)]">{u.email}</p>
-                  </div>
-                  <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] uppercase">{u.role}</span>
+          {adminTab === 'courses' ? (
+            <div className="grid gap-5 xl:grid-cols-[1.05fr_0.95fr]">
+              <div className={dataListBoxClass}>
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <h3 className="text-base font-bold">Courses list</h3>
+                  <button type="button" onClick={resetCourseEditor} className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${outlineBtnClass}`}>+ New course</button>
                 </div>
-              ))}
+                <div className="max-h-[620px] space-y-2 overflow-auto pr-1">
+                  {courses.map((c) => (
+                    <div key={c.id} className={rowClass(selectedCourseId === c.id)}>
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold">{textOf(c.title, locale)}</p>
+                          <p className={`truncate text-xs ${selectedCourseId === c.id && !isDark ? 'text-white/80' : mutedText}`}>
+                            {c.instructor?.name} · {c.status} · {c.type}
+                          </p>
+                          <p className={`mt-1 text-[11px] ${selectedCourseId === c.id && !isDark ? 'text-white/85' : mutedText}`}>
+                            {money(c.sale_price_amount ?? c.price_amount, c.currency || 'USD')}
+                          </p>
+                        </div>
+                        <div className="flex gap-2">
+                          <button type="button" onClick={() => pickCourse(c)} className={`rounded-full border px-3 py-1 text-[10px] font-semibold uppercase ${selectedCourseId === c.id && !isDark ? 'border-white/20 bg-white/10 text-white' : outlineBtnClass}`}>Edit</button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className={editorBoxClass}>
+                <div className="mb-3 flex items-center justify-between gap-2">
+                  <h3 className="text-base font-bold">{selectedCourseId ? 'Edit course' : 'Create course'}</h3>
+                  <div className="flex gap-2">
+                    {selectedCourseId ? (
+                      <>
+                        <button
+                          type="button"
+                          disabled={saving}
+                          onClick={async () => {
+                            if (!token || !selectedCourseId) return
+                            try {
+                              setSaving(true)
+                              setMessage(null)
+                              await api.adminDeleteCourse(selectedCourseId, token)
+                              setMessage('Course deleted')
+                              resetCourseEditor()
+                              await load()
+                            } catch (e: any) {
+                              setMessage(e.message)
+                            } finally {
+                              setSaving(false)
+                            }
+                          }}
+                          className={`rounded-full border px-3 py-1.5 text-xs ${outlineBtnClass}`}
+                        >
+                          Delete
+                        </button>
+                        <button type="button" onClick={resetCourseEditor} className={`rounded-full border px-3 py-1.5 text-xs ${outlineBtnClass}`}>Close</button>
+                      </>
+                    ) : null}
+                  </div>
+                </div>
+                <div className="grid gap-3">
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <select value={courseForm.instructor_user_id} onChange={(e) => setCourseForm((f: any) => ({ ...f, instructor_user_id: e.target.value }))} className={`rounded-xl border px-4 py-3 ${inputClass}`}>
+                      <option value="">Select instructor</option>
+                      {instructors.map((ins) => <option key={ins.id} value={ins.id}>{ins.name}</option>)}
+                    </select>
+                    <select value={courseForm.category_id} onChange={(e) => setCourseForm((f: any) => ({ ...f, category_id: e.target.value }))} className={`rounded-xl border px-4 py-3 ${inputClass}`}>
+                      <option value="">Select category</option>
+                      {categories.map((cat) => <option key={cat.id} value={cat.id}>{textOf(cat.name, locale)}</option>)}
+                    </select>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <select value={courseForm.type} onChange={(e) => setCourseForm((f: any) => ({ ...f, type: e.target.value }))} className={`rounded-xl border px-4 py-3 ${inputClass}`}>
+                      <option value="online">online</option>
+                      <option value="offline">offline</option>
+                    </select>
+                    <select value={courseForm.status} onChange={(e) => setCourseForm((f: any) => ({ ...f, status: e.target.value }))} className={`rounded-xl border px-4 py-3 ${inputClass}`}>
+                      <option value="draft">draft</option>
+                      <option value="published">published</option>
+                      <option value="archived">archived</option>
+                    </select>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <input value={courseForm.title_en} onChange={(e) => setCourseForm((f: any) => ({ ...f, title_en: e.target.value }))} placeholder="Title EN" className={`rounded-xl border px-4 py-3 ${inputClass}`} />
+                    <input value={courseForm.title_ka} onChange={(e) => setCourseForm((f: any) => ({ ...f, title_ka: e.target.value }))} placeholder="Title KA" className={`rounded-xl border px-4 py-3 ${inputClass}`} />
+                    <input value={courseForm.title_ru} onChange={(e) => setCourseForm((f: any) => ({ ...f, title_ru: e.target.value }))} placeholder="Title RU" className={`rounded-xl border px-4 py-3 ${inputClass}`} />
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <input value={courseForm.price_amount} onChange={(e) => setCourseForm((f: any) => ({ ...f, price_amount: e.target.value }))} placeholder="Price" className={`rounded-xl border px-4 py-3 ${inputClass}`} />
+                    <input value={courseForm.sale_price_amount || ''} onChange={(e) => setCourseForm((f: any) => ({ ...f, sale_price_amount: e.target.value }))} placeholder="Sale price (optional)" className={`rounded-xl border px-4 py-3 ${inputClass}`} />
+                    <label className={`flex items-center gap-2 rounded-xl border px-4 py-3 text-sm ${outlineBtnClass}`}>
+                      <input type="checkbox" checked={!!courseForm.is_featured} onChange={(e) => setCourseForm((f: any) => ({ ...f, is_featured: e.target.checked }))} />
+                      Featured
+                    </label>
+                  </div>
+                  <button type="button" disabled={saving} onClick={() => void submitCourse()} className={`rounded-xl px-4 py-3 text-sm font-semibold ${primaryBtnClass} disabled:opacity-60`}>
+                    {saving ? 'Saving...' : selectedCourseId ? 'Save course changes' : 'Create course'}
+                  </button>
+                </div>
+              </div>
             </div>
-          </div>
+          ) : null}
+
+          {adminTab === 'instructors' ? (
+            <div className="grid gap-5 xl:grid-cols-[1.05fr_0.95fr]">
+              <div className={dataListBoxClass}>
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <h3 className="text-base font-bold">Instructors list</h3>
+                  <button type="button" onClick={resetInstructorEditor} className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${outlineBtnClass}`}>Clear selection</button>
+                </div>
+                <div className="max-h-[620px] space-y-2 overflow-auto pr-1">
+                  {instructors.map((ins) => (
+                    <div key={ins.id} className={rowClass(selectedInstructorId === ins.id)}>
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold">{ins.name}</p>
+                          <p className={`truncate text-xs ${selectedInstructorId === ins.id && !isDark ? 'text-white/80' : mutedText}`}>{ins.email}</p>
+                          <p className={`mt-1 text-[11px] uppercase ${selectedInstructorId === ins.id && !isDark ? 'text-white/85' : mutedText}`}>
+                            {ins.instructor_profile?.status || 'pending'} · {ins.courses?.length ?? 0} courses
+                          </p>
+                        </div>
+                        <button type="button" onClick={() => pickInstructor(ins)} className={`rounded-full border px-3 py-1 text-[10px] font-semibold uppercase ${selectedInstructorId === ins.id && !isDark ? 'border-white/20 bg-white/10 text-white' : outlineBtnClass}`}>Edit</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className={editorBoxClass}>
+                <div className="mb-3 flex items-center justify-between gap-2">
+                  <h3 className="text-base font-bold">{selectedInstructorId ? 'Edit instructor' : 'Select instructor'}</h3>
+                  {selectedInstructorId ? <button type="button" onClick={resetInstructorEditor} className={`rounded-full border px-3 py-1.5 text-xs ${outlineBtnClass}`}>Close</button> : null}
+                </div>
+                {selectedInstructorId ? (
+                  <div className="grid gap-3">
+                    <select value={instructorForm.status} onChange={(e) => setInstructorForm((f: any) => ({ ...f, status: e.target.value }))} className={`rounded-xl border px-4 py-3 ${inputClass}`}>
+                      <option value="pending">pending</option>
+                      <option value="approved">approved</option>
+                      <option value="rejected">rejected</option>
+                    </select>
+                    <input value={instructorForm.display_name} onChange={(e) => setInstructorForm((f: any) => ({ ...f, display_name: e.target.value }))} placeholder="Display name" className={`rounded-xl border px-4 py-3 ${inputClass}`} />
+                    <input value={instructorForm.promo_video_url} onChange={(e) => setInstructorForm((f: any) => ({ ...f, promo_video_url: e.target.value }))} placeholder="Promo video URL" className={`rounded-xl border px-4 py-3 ${inputClass}`} />
+                    <input value={instructorForm.hero_image_url} onChange={(e) => setInstructorForm((f: any) => ({ ...f, hero_image_url: e.target.value }))} placeholder="Hero image URL" className={`rounded-xl border px-4 py-3 ${inputClass}`} />
+                    <button type="button" disabled={saving} onClick={() => void submitInstructor()} className={`rounded-xl px-4 py-3 text-sm font-semibold ${primaryBtnClass} disabled:opacity-60`}>
+                      {saving ? 'Saving...' : 'Save instructor changes'}
+                    </button>
+                  </div>
+                ) : (
+                  <div className={`rounded-xl border border-dashed p-4 text-sm ${isDark ? 'border-white/12 text-white/60' : 'border-[var(--line)] text-[var(--muted)]'}`}>
+                    Choose an instructor from the list to edit status and profile fields.
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : null}
         </div>
       </div>
+
       <Footer />
     </>
   )
 }
 
 function CartPage() {
-  const { cart, cartBusy, locale, updateCartItemQty, removeCartItem, clearCart, refreshCart } = useApp()
+  const { cart, cartBusy, locale, theme, updateCartItemQty, removeCartItem, clearCart, refreshCart } = useApp()
   const navigate = useNavigate()
+  const isDark = theme === 'dark'
+  const panelClass = isDark ? 'border-white/10 bg-[#0c111a]/92 text-white' : 'border-[var(--line)] bg-white'
+  const controlClass = isDark
+    ? 'border-white/12 bg-white/5 text-white hover:bg-white/10'
+    : 'border-[var(--line)] bg-white text-black'
+  const mutedText = isDark ? 'text-white/60' : 'text-[var(--muted)]'
+  const strongButtonClass = isDark ? 'bg-white text-black' : 'bg-black text-white'
 
   useEffect(() => {
     void refreshCart()
@@ -3909,8 +5260,8 @@ function CartPage() {
         subtitle="Review selected courses before payment."
         actions={
           <div className="flex gap-2">
-            <button onClick={() => void refreshCart()} className="rounded-full border border-[var(--line)] bg-white px-4 py-2 text-xs font-semibold">Refresh</button>
-            <button onClick={() => void clearCart()} className="rounded-full border border-[var(--line)] bg-white px-4 py-2 text-xs font-semibold">Clear</button>
+            <button onClick={() => void refreshCart()} className={`rounded-full border px-4 py-2 text-xs font-semibold ${controlClass}`}>Refresh</button>
+            <button onClick={() => void clearCart()} className={`rounded-full border px-4 py-2 text-xs font-semibold ${controlClass}`}>Clear</button>
           </div>
         }
       />
@@ -3918,40 +5269,40 @@ function CartPage() {
         <div className="space-y-3">
           {cart?.items?.length ? (
             cart.items.map((item) => (
-              <div key={item.id} className="rounded-[16px] border border-[var(--line)] bg-white p-4">
+              <div key={item.id} className={`rounded-[16px] border p-4 ${panelClass}`}>
                 <div className="flex gap-4">
                   <img src={item.course.cover_image_url || heroImages[0]} alt={textOf(item.course.title, locale)} className="h-[100px] w-[130px] rounded-[12px] object-cover" />
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-semibold">{textOf(item.course.title, locale)}</p>
-                    <p className="mt-1 text-xs text-[var(--muted)]">{item.course.instructor?.name} · {item.course.type}</p>
+                    <p className={`mt-1 text-xs ${mutedText}`}>{item.course.instructor?.name} · {item.course.type}</p>
                     <div className="mt-3 flex flex-wrap items-center gap-2">
-                      <button disabled={cartBusy || item.quantity <= 1} onClick={() => void updateCartItemQty(item.id, item.quantity - 1)} className="grid size-8 place-items-center rounded-full border border-[var(--line)] bg-white">-</button>
+                      <button disabled={cartBusy || item.quantity <= 1} onClick={() => void updateCartItemQty(item.id, item.quantity - 1)} className={`grid size-8 place-items-center rounded-full border ${controlClass}`}>-</button>
                       <span className="w-8 text-center text-sm font-semibold">{item.quantity}</span>
-                      <button disabled={cartBusy} onClick={() => void updateCartItemQty(item.id, item.quantity + 1)} className="grid size-8 place-items-center rounded-full border border-[var(--line)] bg-white">+</button>
-                      <button disabled={cartBusy} onClick={() => void removeCartItem(item.id)} className="ml-2 rounded-full border border-[var(--line)] px-3 py-2 text-xs">Remove</button>
+                      <button disabled={cartBusy} onClick={() => void updateCartItemQty(item.id, item.quantity + 1)} className={`grid size-8 place-items-center rounded-full border ${controlClass}`}>+</button>
+                      <button disabled={cartBusy} onClick={() => void removeCartItem(item.id)} className={`ml-2 rounded-full border px-3 py-2 text-xs ${controlClass}`}>Remove</button>
                     </div>
                   </div>
                   <div className="text-right">
                     <p className="text-sm font-semibold">{money(item.line_total, cart.summary.currency)}</p>
-                    <p className="mt-1 text-xs text-[var(--muted)]">{money(item.unit_price, cart.summary.currency)} each</p>
+                    <p className={`mt-1 text-xs ${mutedText}`}>{money(item.unit_price, cart.summary.currency)} each</p>
                   </div>
                 </div>
               </div>
             ))
           ) : (
-            <div className="rounded-[16px] border border-[var(--line)] bg-white p-6 text-sm text-[var(--muted)]">{t(locale, 'emptyCart')}</div>
+            <div className={`rounded-[16px] border p-6 text-sm ${panelClass} ${mutedText}`}>{t(locale, 'emptyCart')}</div>
           )}
         </div>
 
-        <div className="rounded-[16px] border border-[var(--line)] bg-white p-5 h-fit">
+        <div className={`rounded-[16px] border p-5 h-fit ${panelClass}`}>
           <h2 className="text-lg font-bold">Summary</h2>
-          <div className="mt-4 space-y-2 text-sm">
+          <div className={`mt-4 space-y-2 text-sm ${isDark ? 'text-white/80' : ''}`}>
             <div className="flex justify-between"><span>Items</span><span>{cart?.summary.items_count ?? 0}</span></div>
             <div className="flex justify-between"><span>Subtotal</span><span>{money(cart?.summary.subtotal, cart?.summary.currency || 'USD')}</span></div>
             <div className="flex justify-between"><span>Discount</span><span>{money(cart?.summary.discount, cart?.summary.currency || 'USD')}</span></div>
             <div className="mt-3 flex justify-between text-base font-semibold"><span>Total</span><span>{money(cart?.summary.total, cart?.summary.currency || 'USD')}</span></div>
           </div>
-          <button onClick={() => navigate('/checkout')} className="mt-5 w-full rounded-xl bg-black px-4 py-3 text-sm font-semibold text-white">Proceed to checkout</button>
+          <button onClick={() => navigate('/checkout')} className={`mt-5 w-full rounded-xl px-4 py-3 text-sm font-semibold ${strongButtonClass}`}>Proceed to checkout</button>
         </div>
       </div>
       <Footer />

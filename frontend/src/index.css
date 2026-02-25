@@ -62,7 +62,7 @@ button,
 input,
 select,
 textarea {
-  font: inherit;
+  cursor: pointer !important;
 }
 
 h1,
@@ -71,8 +71,14 @@ h3,
 h4,
 h5,
 h6 {
-  font-family: 'Playfair Display', serif;
+  font-family: 'Montserrat', serif;
   letter-spacing: -0.02em;
+}
+
+
+
+.rounded-full{
+  border-radius: 15px !important;
 }
 
 .brand-script {

@@ -258,7 +258,7 @@ class AdminController extends Controller
 
     private function requireAdmin(Request $request): void
     {
-        abort_unless($request->user() && $request->user()->role === 'admin', 403);
+        $user = $request->user();
+        abort_unless($user && ($user->role === 'admin' || $user->isSuperAdmin()), 403);
     }
 }
-

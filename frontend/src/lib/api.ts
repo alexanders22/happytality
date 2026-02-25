@@ -54,9 +54,19 @@ export type ApiLesson = {
   description?: Record<string, string>
   cover_image_url?: string | null
   video_url?: string | null
+  materials?: Array<{ name?: string; url?: string; mime?: string; size?: number }>
   duration_seconds?: number
   is_preview?: boolean
   is_published?: boolean
+}
+
+export type ApiLessonProgressItem = {
+  lesson_id: number
+  last_position_seconds: number
+  watched_seconds: number
+  completed_percent: number
+  is_completed: boolean
+  last_watched_at?: string | null
 }
 
 export type ApiCourseReview = {
@@ -164,6 +174,7 @@ type RequestOptions = {
   token?: string | null
   guestToken?: string | null
   body?: unknown
+  formData?: FormData
   signal?: AbortSignal
 }
 
@@ -174,12 +185,12 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
 
   if (options.token) headers.Authorization = `Bearer ${options.token}`
   if (options.guestToken) headers['X-Guest-Token'] = options.guestToken
-  if (options.body !== undefined) headers['Content-Type'] = 'application/json'
+  if (options.body !== undefined && !options.formData) headers['Content-Type'] = 'application/json'
 
   const res = await fetch(`${API_BASE}${path}`, {
     method: options.method ?? 'GET',
     headers,
-    body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
+    body: options.formData ?? (options.body !== undefined ? JSON.stringify(options.body) : undefined),
     signal: options.signal,
   })
 
@@ -192,7 +203,11 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   }
 
   if (!res.ok) {
-    const message = data?.message || data?.error || `HTTP ${res.status}`
+    const validationError =
+      data?.errors && typeof data.errors === 'object'
+        ? Object.values(data.errors).flat().find((v) => typeof v === 'string')
+        : null
+    const message = validationError || data?.message || data?.error || `HTTP ${res.status}`
     throw new Error(message)
   }
 
@@ -238,6 +253,20 @@ export const api = {
     request<any>(`/me/instructor/courses/${id}`, { method: 'PUT', token, body: payload }),
   createMyLesson: (courseId: number, payload: any, token: string) =>
     request<any>(`/me/instructor/courses/${courseId}/lessons`, { method: 'POST', token, body: payload }),
+  createMyLessonForm: (courseId: number, formData: FormData, token: string) =>
+    request<any>(`/me/instructor/courses/${courseId}/lessons`, { method: 'POST', token, formData }),
+  updateMyLessonForm: (courseId: number, lessonId: number, formData: FormData, token: string) => {
+    formData.append('_method', 'PUT')
+    return request<any>(`/me/instructor/courses/${courseId}/lessons/${lessonId}`, { method: 'POST', token, formData })
+  },
+  updateMyLesson: (courseId: number, lessonId: number, payload: any, token: string) =>
+    request<any>(`/me/instructor/courses/${courseId}/lessons/${lessonId}`, { method: 'PUT', token, body: payload }),
+  deleteMyLesson: (courseId: number, lessonId: number, token: string) =>
+    request<any>(`/me/instructor/courses/${courseId}/lessons/${lessonId}`, { method: 'DELETE', token }),
+  courseLessonProgress: (courseId: number, token: string) =>
+    request<{ course_id: number; progress: Record<string, ApiLessonProgressItem> }>(`/me/courses/${courseId}/lesson-progress`, { token }),
+  saveLessonProgress: (lessonId: number, payload: any, token: string) =>
+    request<{ message: string; progress: ApiLessonProgressItem }>(`/me/lessons/${lessonId}/progress`, { method: 'PUT', token, body: payload }),
 
   dashboardSummary: (token: string) => request<any>('/dashboard/summary', { token }),
 
@@ -248,8 +277,14 @@ export const api = {
     request<any>(`/admin/users/${id}`, { method: 'PUT', token, body: payload }),
   adminCategories: (token: string) => request<any>('/admin/categories', { token }),
   adminCreateCategory: (payload: any, token: string) => request<any>('/admin/categories', { method: 'POST', token, body: payload }),
+  adminUpdateCategory: (id: number, payload: any, token: string) =>
+    request<any>(`/admin/categories/${id}`, { method: 'PUT', token, body: payload }),
   adminCourses: (token: string) => request<any>('/admin/courses', { token }),
   adminCreateCourse: (payload: any, token: string) => request<any>('/admin/courses', { method: 'POST', token, body: payload }),
+  adminUpdateCourse: (id: number, payload: any, token: string) =>
+    request<any>(`/admin/courses/${id}`, { method: 'PUT', token, body: payload }),
+  adminDeleteCourse: (id: number, token: string) =>
+    request<any>(`/admin/courses/${id}`, { method: 'DELETE', token }),
   adminInstructors: (token: string) => request<any>('/admin/instructors', { token }),
   adminUpdateInstructor: (id: number, payload: any, token: string) =>
     request<any>(`/admin/instructors/${id}`, { method: 'PUT', token, body: payload }),

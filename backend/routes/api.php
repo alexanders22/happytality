@@ -8,6 +8,7 @@ use App\Http\Controllers\Api\CourseController;
 use App\Http\Controllers\Api\InstructorController;
 use App\Http\Controllers\Api\InstructorCourseController;
 use App\Http\Controllers\Api\LandingController;
+use App\Http\Controllers\Api\LessonProgressController;
 use App\Http\Controllers\Api\MetaController;
 use App\Http\Controllers\Api\ProfileController;
 use App\Http\Controllers\Api\SearchController;
@@ -44,6 +45,8 @@ Route::prefix('v1')->group(function (): void {
 
         Route::post('/auth/logout', [AuthController::class, 'logout']);
         Route::post('/courses/{course:slug}/reviews', [CourseController::class, 'storeReview']);
+        Route::get('/me/courses/{course}/lesson-progress', [LessonProgressController::class, 'byCourse']);
+        Route::put('/me/lessons/{lesson}/progress', [LessonProgressController::class, 'upsert']);
         Route::post('/checkout/create', [CheckoutController::class, 'create']);
         Route::get('/me/profile', [ProfileController::class, 'user']);
         Route::put('/me/profile', [ProfileController::class, 'updateUser']);

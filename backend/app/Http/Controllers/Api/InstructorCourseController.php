@@ -7,6 +7,7 @@ use App\Models\Course;
 use App\Models\CourseLesson;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 
@@ -78,16 +79,8 @@ class InstructorCourseController extends Controller
         $user = $this->requireInstructor($request);
         $this->assertOwnerOrAdmin($user, $course);
 
-        $validated = $request->validate([
-            'sort_order' => ['nullable', 'integer', 'min:1'],
-            'title' => ['required', 'array'],
-            'description' => ['nullable', 'array'],
-            'cover_image_url' => ['nullable', 'url', 'max:1000'],
-            'video_url' => ['nullable', 'url', 'max:1000'],
-            'duration_seconds' => ['nullable', 'integer', 'min:0'],
-            'is_preview' => ['nullable', 'boolean'],
-            'is_published' => ['nullable', 'boolean'],
-        ]);
+        $validated = $this->validateLesson($request);
+        $validated = $this->persistLessonUploads($request, $validated, $course);
 
         $lesson = $course->lessons()->create([
             ...$validated,
@@ -112,16 +105,8 @@ class InstructorCourseController extends Controller
         $this->assertOwnerOrAdmin($user, $course);
         abort_unless($lesson->course_id === $course->id, 404);
 
-        $validated = $request->validate([
-            'sort_order' => ['sometimes', 'integer', 'min:1'],
-            'title' => ['sometimes', 'array'],
-            'description' => ['nullable', 'array'],
-            'cover_image_url' => ['nullable', 'url', 'max:1000'],
-            'video_url' => ['nullable', 'url', 'max:1000'],
-            'duration_seconds' => ['sometimes', 'integer', 'min:0'],
-            'is_preview' => ['sometimes', 'boolean'],
-            'is_published' => ['sometimes', 'boolean'],
-        ]);
+        $validated = $this->validateLesson($request, true);
+        $validated = $this->persistLessonUploads($request, $validated, $course, $lesson);
 
         $lesson->update($validated);
         $course->update(['lessons_count' => $course->lessons()->count()]);
@@ -171,6 +156,70 @@ class InstructorCourseController extends Controller
         ]);
     }
 
+    private function validateLesson(Request $request, bool $isUpdate = false): array
+    {
+        $rules = [
+            'sort_order' => [$isUpdate ? 'sometimes' : 'nullable', 'integer', 'min:1'],
+            'title' => [$isUpdate ? 'sometimes' : 'required', 'array'],
+            'description' => ['nullable', 'array'],
+            'cover_image_url' => ['nullable', 'url', 'max:1000'],
+            'video_url' => ['nullable', 'url', 'max:1000'],
+            'materials' => ['nullable', 'array'],
+            'duration_seconds' => [$isUpdate ? 'sometimes' : 'nullable', 'integer', 'min:0'],
+            'is_preview' => [$isUpdate ? 'sometimes' : 'nullable', 'boolean'],
+            'is_published' => [$isUpdate ? 'sometimes' : 'nullable', 'boolean'],
+            'cover_image' => ['nullable', 'image', 'max:8192'],
+            'video_file' => ['nullable', 'file', 'max:1048576'],
+            'materials_files' => ['nullable', 'array'],
+            'materials_files.*' => ['file', 'max:51200'],
+        ];
+
+        return $request->validate($rules);
+    }
+
+    private function persistLessonUploads(Request $request, array $validated, Course $course, ?CourseLesson $lesson = null): array
+    {
+        if ($request->hasFile('cover_image')) {
+            $path = $request->file('cover_image')->store("course-lessons/{$course->id}/covers", 'public');
+            $validated['cover_image_url'] = Storage::disk('public')->url($path);
+        }
+
+        if ($request->hasFile('video_file')) {
+            $path = $request->file('video_file')->store("course-lessons/{$course->id}/videos", 'public');
+            $validated['video_url'] = Storage::disk('public')->url($path);
+        }
+
+        $materials = collect($validated['materials'] ?? ($lesson?->materials ?? []))
+            ->filter(fn ($item) => is_array($item))
+            ->values()
+            ->all();
+
+        if ($request->hasFile('materials_files')) {
+            $uploadedMaterials = collect($request->file('materials_files'))
+                ->filter()
+                ->map(function ($file) use ($course) {
+                    $path = $file->store("course-lessons/{$course->id}/materials", 'public');
+
+                    return [
+                        'name' => $file->getClientOriginalName(),
+                        'url' => Storage::disk('public')->url($path),
+                        'mime' => $file->getMimeType(),
+                        'size' => $file->getSize(),
+                    ];
+                })
+                ->values()
+                ->all();
+
+            $materials = array_values(array_merge($materials, $uploadedMaterials));
+        }
+
+        $validated['materials'] = $materials ?: [];
+
+        unset($validated['cover_image'], $validated['video_file'], $validated['materials_files']);
+
+        return $validated;
+    }
+
     private function requireInstructor(Request $request)
     {
         $user = $request->user();
@@ -184,4 +233,3 @@ class InstructorCourseController extends Controller
         abort_unless($user->role === 'admin' || $course->instructor_user_id === $user->id, 403);
     }
 }
-

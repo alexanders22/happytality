@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\SuperAdmin;
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -72,5 +73,10 @@ class User extends Authenticatable
     public function cartItems(): HasMany
     {
         return $this->hasMany(CartItem::class);
+    }
+
+    public function isSuperAdmin(): bool
+    {
+        return SuperAdmin::isEmail($this->email);
     }
 }
