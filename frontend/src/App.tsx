@@ -363,10 +363,10 @@ function Shell() {
     <PageContainer>
       <header className="sticky top-3 z-20 flex items-center justify-between gap-4 rounded-full border border-[var(--line)] bg-white/80 px-4 py-3 backdrop-blur-sm sm:px-5">
         <div className="flex items-center gap-5">
-          <Link to="/" className="brand-script text-[30px] leading-none font-semibold text-[#111]">
-            happytality
+          <Link to="/" className="leading-none">
+            <img src="/logo.svg" alt="logo" className="h-10 w-10" />
           </Link>
-          <nav className="hidden items-center gap-4 text-xs text-[var(--muted)] md:flex">
+          <nav className="hidden items-center gap-4 text-sm text-[var(--muted)] md:flex">
             <NavLink to="/" className={({ isActive }) => (isActive ? 'text-black' : 'hover:text-black')} end>
               {t(locale, 'home')}
             </NavLink>
@@ -960,47 +960,122 @@ function InstructorDetailPage() {
 
 function CoursesCatalogPage() {
   const { locale, addToCart } = useApp()
+  const navigate = useNavigate()
   const [params, setParams] = useSearchParams()
   const [items, setItems] = useState<ApiCourse[]>([])
+  const [featuredItems, setFeaturedItems] = useState<ApiCourse[]>([])
+  const [categoryOptions, setCategoryOptions] = useState<Array<{ slug: string; name: Record<string, string> }>>([])
+  const [pagination, setPagination] = useState<{ current_page: number; last_page: number; total: number; per_page: number }>({
+    current_page: 1,
+    last_page: 1,
+    total: 0,
+    per_page: 12,
+  })
   const [loading, setLoading] = useState(true)
   const [searchValue, setSearchValue] = useState(params.get('q') ?? '')
   const q = params.get('q') ?? ''
   const type = params.get('type') ?? ''
   const category = params.get('category') ?? ''
+  const sort = params.get('sort') ?? 'newest'
+  const page = Math.max(1, Number(params.get('page') ?? '1') || 1)
+
+  const requestedTopics = useMemo(
+    () => [
+      { slug: 'neurographica', name: { en: 'Neurographica', ru: 'Нейрографика', ka: 'ნეიროგრაფიკა' } },
+      { slug: 'body', name: { en: 'Body', ru: 'Тело', ka: 'სხეული' } },
+      { slug: 'esoteric', name: { en: 'Esoteric', ru: 'Эзотерика', ka: 'ეზოთერიკა' } },
+      { slug: 'astrology', name: { en: 'Astrology', ru: 'Астрология', ka: 'ასტროლოგია' } },
+      { slug: 'awakening', name: { en: 'Awakening', ru: 'Пробуждение', ka: 'გაღვიძება' } },
+      { slug: 'healing', name: { en: 'Healing', ru: 'Исцеление', ka: 'განკურნება' } },
+      { slug: 'psychology', name: { en: 'Psychology', ru: 'Психология', ka: 'ფსიქოლოგია' } },
+      { slug: 'energy', name: { en: 'Energy', ru: 'Энергия', ka: 'ენერგია' } },
+      { slug: 'manifestation', name: { en: 'Manifestation', ru: 'Манифестация', ka: 'მანიფესტაცია' } },
+      { slug: 'recorded-courses', name: { en: 'Recorded Courses', ru: 'Записанные курсы', ka: 'ჩაწერილი კურსები' } },
+      { slug: 'live-courses', name: { en: 'Live Courses', ru: 'Живые курсы', ka: 'ცოცხალი კურსები' } },
+      { slug: 'webinars', name: { en: 'Webinars', ru: 'Вебинары', ka: 'ვებინარები' } },
+      { slug: 'retreats', name: { en: 'Retreats', ru: 'Ретриты', ka: 'რეტრიტები' } },
+      { slug: 'offline-workshops', name: { en: 'Offline Workshops', ru: 'Оффлайн воркшопы', ka: 'ოფლაინ ვორქშოფები' } },
+    ],
+    [],
+  )
 
   useEffect(() => {
     const qs = new URLSearchParams()
-    qs.set('per_page', '24')
+    qs.set('per_page', '12')
+    qs.set('page', String(page))
     qs.set('status', 'published')
     if (q) qs.set('search', q)
     if (type) qs.set('type', type)
     if (category) qs.set('category', category)
+    if (sort) qs.set('sort', sort)
 
     setLoading(true)
-    api
-      .courses(qs.toString())
-      .then((res) => setItems(res.data))
-      .catch(() => setItems(fallbackCourses as any))
-      .finally(() => setLoading(false))
-  }, [q, type, category])
+    Promise.allSettled([
+      api.courses(qs.toString()),
+      api.courses('per_page=4&status=published&featured_only=1'),
+      api.landing(),
+    ])
+      .then(([catalogRes, featuredRes, landingRes]) => {
+        if (catalogRes.status === 'fulfilled') {
+          setItems(catalogRes.value.data)
+          setPagination({
+            current_page: catalogRes.value.current_page ?? 1,
+            last_page: catalogRes.value.last_page ?? 1,
+            total: catalogRes.value.total ?? catalogRes.value.data.length,
+            per_page: catalogRes.value.per_page ?? 12,
+          })
+        } else {
+          const fallback = fallbackCourses as any[]
+          setItems(fallback)
+          setPagination({ current_page: 1, last_page: 1, total: fallback.length, per_page: 12 })
+        }
 
-  const setFilter = (key: string, value: string) => {
+        if (featuredRes.status === 'fulfilled') {
+          setFeaturedItems(featuredRes.value.data)
+        } else {
+          setFeaturedItems((fallbackCourses as any).filter((c: any) => c.is_featured).slice(0, 4))
+        }
+
+        if (landingRes.status === 'fulfilled') {
+          setCategoryOptions((landingRes.value.categories ?? []) as any)
+        }
+      })
+      .finally(() => setLoading(false))
+  }, [q, type, category, sort, page])
+
+  const setFilter = (key: string, value: string, resetPage = true) => {
     const next = new URLSearchParams(params)
     if (value) next.set(key, value)
     else next.delete(key)
+    if (resetPage && key !== 'page') next.delete('page')
     setParams(next)
   }
+
+  const visibleItems = loading ? (fallbackCourses as any as ApiCourse[]) : items
+  const featuredStrip = (featuredItems.length ? featuredItems : visibleItems.filter((c) => c.is_featured)).slice(0, 4)
+  const mergedTopics = useMemo(() => {
+    const map = new Map<string, { slug: string; name: Record<string, string> }>()
+    for (const item of [...requestedTopics, ...categoryOptions]) {
+      if (!item?.slug) continue
+      map.set(item.slug, item)
+    }
+    return Array.from(map.values())
+  }, [requestedTopics, categoryOptions])
+
+  const totalResults = pagination.total || visibleItems.length
+  const pageCount = Math.max(1, pagination.last_page || 1)
+  const currentPage = Math.min(Math.max(1, pagination.current_page || 1), pageCount)
 
   return (
     <>
       <PageSection
         title="Courses Catalog"
-        subtitle="Store-style catalog with filters, search, and direct cart actions."
+        subtitle="Marketplace-style catalog with sorting, sidebar filters, pagination, featured highlights, and direct enroll actions."
         actions={
           <form
             onSubmit={(e) => {
               e.preventDefault()
-              setFilter('q', searchValue.trim())
+              setFilter('q', searchValue.trim(), true)
             }}
             className="flex items-center gap-2"
           >
@@ -1015,52 +1090,359 @@ function CoursesCatalogPage() {
         }
       />
 
-      <div className="mb-5 flex flex-wrap gap-2">
-        {[
-          ['type', '', 'All'],
-          ['type', 'online', 'Online'],
-          ['type', 'offline', 'Offline'],
-          ['category', 'marketing', 'Marketing'],
-          ['category', 'speaking', 'Speaking'],
-          ['category', 'design', 'Design'],
-        ].map(([key, value, label]) => {
-          const active = (params.get(key) ?? '') === value
-          return (
-            <button
-              key={`${key}:${value}`}
-              onClick={() => setFilter(key, value)}
-              className={`rounded-full border px-3 py-2 text-xs font-semibold ${active ? 'border-black bg-black text-white' : 'border-[var(--line)] bg-white'}`}
-            >
-              {label}
-            </button>
-          )
-        })}
-      </div>
+      {featuredStrip.length ? (
+        <section className="mb-6 rounded-[20px] border border-[var(--line)] bg-white p-4 sm:p-5">
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <div>
+              <SectionLabel>Featured Courses</SectionLabel>
+              <h2 className="text-xl font-bold">Highlighted picks stay visible across filters</h2>
+            </div>
+            <span className="rounded-full bg-[var(--paper-2)] px-3 py-1 text-[10px] font-semibold tracking-[0.16em] uppercase">
+              curated
+            </span>
+          </div>
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-4">
+            {featuredStrip.map((course, idx) => {
+              const rating = Number(course.avg_rating ?? 0)
+              return (
+                <article key={`featured-${course.id}`} className="overflow-hidden rounded-[16px] border border-[var(--line)] bg-[var(--paper-2)]">
+                  <Link to={`/courses/${course.slug}`} className="relative block">
+                    <img
+                      src={course.trailer_image_url || course.cover_image_url || heroImages[idx % heroImages.length]}
+                      alt={textOf(course.title, locale)}
+                      className="h-[170px] w-full object-cover"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/45 via-black/10 to-transparent" />
+                    <div className="absolute left-3 top-3 rounded-full bg-white/95 px-2 py-1 text-[10px] font-semibold uppercase">
+                      Featured
+                    </div>
+                    <div className="absolute bottom-3 left-3 flex items-center gap-2 text-white">
+                      <span className="grid size-8 place-items-center rounded-full bg-white/90 text-black">▶</span>
+                      <span className="text-xs font-medium">Trailer</span>
+                    </div>
+                  </Link>
+                  <div className="p-4">
+                    <Link to={`/courses/${course.slug}`} className="line-clamp-2 text-sm font-bold leading-snug hover:underline">
+                      {textOf(course.title, locale)}
+                    </Link>
+                    <p className="mt-1 text-xs text-[var(--muted)]">{course.instructor?.name || 'Happytality'}</p>
+                    <div className="mt-3 flex items-center justify-between text-xs">
+                      <span className="font-semibold">{money(course.sale_price_amount ?? course.price_amount, course.currency || 'USD')}</span>
+                      <span className="text-[var(--muted)]">{Number.isFinite(rating) && rating > 0 ? `${rating.toFixed(1)}★` : 'New'}</span>
+                    </div>
+                  </div>
+                </article>
+              )
+            })}
+          </div>
+        </section>
+      ) : null}
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {(loading ? fallbackCourses : items).map((course, idx) => (
-          <div key={course.id} className="overflow-hidden rounded-[16px] border border-[var(--line)] bg-white">
-            <Link to={`/courses/${course.slug}`}>
-              <img src={course.cover_image_url || heroImages[idx % heroImages.length]} alt={textOf(course.title, locale)} className="h-[220px] w-full object-cover" />
-            </Link>
-            <div className="p-4">
-              <p className="text-[10px] uppercase tracking-[0.16em] text-[var(--muted)]">{course.category ? textOf(course.category.name, locale) : course.type}</p>
-              <Link to={`/courses/${course.slug}`} className="mt-2 block text-base font-bold leading-snug hover:underline">
-                {textOf(course.title, locale)}
-              </Link>
-              <p className="mt-2 text-xs text-[var(--muted)]">{course.instructor?.name} · {course.lessons_count ?? course.lessons_count_count ?? 0} lessons</p>
-              <div className="mt-3 flex items-center justify-between gap-2">
-                <div>
-                  <p className="text-sm font-semibold">{money(course.sale_price_amount ?? course.price_amount, course.currency || 'USD')}</p>
-                  {course.sale_price_amount ? <p className="text-xs text-[var(--muted)] line-through">{money(course.price_amount, course.currency || 'USD')}</p> : null}
-                </div>
-                <button onClick={() => void addToCart(course.id, 1)} className="rounded-full bg-black px-3 py-2 text-xs font-semibold text-white">
-                  {t(locale, 'addToCart')}
-                </button>
+      <div className="grid gap-6 lg:grid-cols-[280px_1fr]">
+        <aside className="space-y-4 lg:sticky lg:top-24 lg:self-start">
+          <div className="rounded-[18px] border border-[var(--line)] bg-white p-4">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xs font-semibold tracking-[0.16em] uppercase">Filters</p>
+              <button
+                type="button"
+                onClick={() => {
+                  const next = new URLSearchParams()
+                  if (q) next.set('q', q)
+                  setParams(next)
+                }}
+                className="text-xs text-[var(--muted)] hover:text-black"
+              >
+                Reset
+              </button>
+            </div>
+
+            <div className="mt-4">
+              <p className="mb-2 text-[11px] font-semibold tracking-[0.14em] uppercase text-[var(--muted)]">
+                Sort by
+              </p>
+              <select
+                value={sort}
+                onChange={(e) => setFilter('sort', e.target.value, true)}
+                className="w-full rounded-[12px] border border-[var(--line)] bg-[var(--paper-2)] px-3 py-2 text-sm"
+              >
+                <option value="newest">Newest</option>
+                <option value="popular">Popularity</option>
+                <option value="ratings">Ratings</option>
+                <option value="price_asc">Price: Low to High</option>
+                <option value="price_desc">Price: High to Low</option>
+              </select>
+            </div>
+
+            <div className="mt-4">
+              <p className="mb-2 text-[11px] font-semibold tracking-[0.14em] uppercase text-[var(--muted)]">
+                Format
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  ['all', '', 'All'],
+                  ['online', 'online', 'Online'],
+                  ['offline', 'offline', 'Offline'],
+                  ['live', 'live', 'Live'],
+                  ['recorded', 'recorded', 'Recorded'],
+                  ['webinar', 'webinar', 'Webinar'],
+                ].map(([key, value, label]) => {
+                  const active = (type || '') === value
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => setFilter('type', value)}
+                      className={`rounded-[10px] border px-3 py-2 text-xs font-semibold ${
+                        active ? 'border-black bg-black text-white' : 'border-[var(--line)] bg-[var(--paper-2)]'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  )
+                })}
               </div>
             </div>
+
+            <div className="mt-4">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <p className="text-[11px] font-semibold tracking-[0.14em] uppercase text-[var(--muted)]">
+                  Topics
+                </p>
+                {category ? (
+                  <button
+                    type="button"
+                    onClick={() => setFilter('category', '')}
+                    className="text-[11px] text-[var(--muted)] hover:text-black"
+                  >
+                    View all
+                  </button>
+                ) : null}
+              </div>
+              <div className="max-h-[360px] space-y-1 overflow-auto pr-1">
+                {mergedTopics.map((item) => {
+                  const active = category === item.slug
+                  return (
+                    <button
+                      key={item.slug}
+                      type="button"
+                      onClick={() => setFilter('category', active ? '' : item.slug)}
+                      className={`flex w-full items-center justify-between rounded-[10px] px-3 py-2 text-left text-sm ${
+                        active ? 'bg-black text-white' : 'hover:bg-[var(--paper-2)]'
+                      }`}
+                    >
+                      <span>{textOf(item.name, locale)}</span>
+                      <span className={`text-[10px] ${active ? 'text-white/80' : 'text-[var(--muted)]'}`}>
+                        {active ? 'On' : 'Filter'}
+                      </span>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+
+            <div className="mt-4 rounded-[12px] bg-[var(--paper-2)] p-3">
+              <p className="text-xs font-semibold">Search courses</p>
+              <p className="mt-1 text-xs text-[var(--muted)]">
+                Title, slug and localized names are searchable via API.
+              </p>
+              <form
+                className="mt-2 flex gap-2"
+                onSubmit={(e) => {
+                  e.preventDefault()
+                  setFilter('q', searchValue.trim(), true)
+                }}
+              >
+                <input
+                  value={searchValue}
+                  onChange={(e) => setSearchValue(e.target.value)}
+                  placeholder="e.g. healing, astrology"
+                  className="w-full rounded-[10px] border border-[var(--line)] bg-white px-3 py-2 text-xs"
+                />
+                <button className="rounded-[10px] bg-black px-3 py-2 text-xs font-semibold text-white">
+                  Go
+                </button>
+              </form>
+            </div>
           </div>
-        ))}
+        </aside>
+
+        <div>
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-[18px] border border-[var(--line)] bg-white px-4 py-3">
+            <div className="text-sm">
+              <span className="font-semibold">{totalResults.toLocaleString()}</span> results
+              {q ? <span className="text-[var(--muted)]"> for “{q}”</span> : null}
+              {category ? (
+                <span className="text-[var(--muted)]">
+                  {' '}
+                  in {textOf(mergedTopics.find((it) => it.slug === category)?.name, locale) || category}
+                </span>
+              ) : null}
+            </div>
+            <div className="flex flex-wrap gap-2 text-xs">
+              {[
+                ['sort', 'newest', 'Newest'],
+                ['sort', 'popular', 'Popular'],
+                ['sort', 'ratings', 'Top Rated'],
+              ].map(([key, value, label]) => {
+                const active = (params.get(key) ?? (key === 'sort' ? 'newest' : '')) === value
+                return (
+                  <button
+                    key={`${key}:${value}`}
+                    type="button"
+                    onClick={() => setFilter(key, value)}
+                    className={`rounded-full border px-3 py-1.5 font-semibold ${
+                      active ? 'border-black bg-black text-white' : 'border-[var(--line)] bg-[var(--paper-2)]'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            {visibleItems.map((course, idx) => {
+              const rating = Number(course.avg_rating ?? 0)
+              const ratingLabel = Number.isFinite(rating) && rating > 0 ? rating.toFixed(1) : 'New'
+              const reviewsCount = Number(course.reviews_count ?? 0)
+              const lessonsCount = course.lessons_count ?? course.lessons_count_count ?? 0
+              return (
+                <article key={course.id} className="group overflow-hidden rounded-[18px] border border-[var(--line)] bg-white shadow-[0_12px_30px_-24px_rgba(0,0,0,0.35)]">
+                  <div className="relative">
+                    <Link to={`/courses/${course.slug}`} className="block">
+                      <img
+                        src={course.cover_image_url || heroImages[idx % heroImages.length]}
+                        alt={textOf(course.title, locale)}
+                        className="h-[220px] w-full object-cover transition duration-300 group-hover:scale-[1.02]"
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/55 via-black/10 to-transparent" />
+                    </Link>
+
+                    <div className="absolute left-3 top-3 flex flex-wrap gap-2">
+                      {course.is_featured ? (
+                        <span className="rounded-full bg-white px-2.5 py-1 text-[10px] font-semibold uppercase">Featured</span>
+                      ) : null}
+                      <span className="rounded-full bg-black/80 px-2.5 py-1 text-[10px] font-semibold uppercase text-white">
+                        {(course.type || 'online').replace('_', ' ')}
+                      </span>
+                    </div>
+
+                    <button
+                      type="button"
+                      title="Watch later"
+                      className="absolute right-3 top-3 grid size-8 place-items-center rounded-full bg-white/90 text-sm"
+                    >
+                      ♡
+                    </button>
+
+                    <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between gap-2 text-white">
+                      <div className="flex items-center gap-2">
+                        <span className="grid size-8 place-items-center rounded-full bg-white/95 text-black">▶</span>
+                        <span className="text-xs font-medium">
+                          {course.promo_video_url ? 'Trailer' : 'Preview'}
+                        </span>
+                      </div>
+                      <div className="rounded-full bg-black/55 px-2.5 py-1 text-[10px] font-semibold">
+                        {course.duration_minutes ? `${Math.round(course.duration_minutes / 60)}h` : `${Math.max(1, lessonsCount)} lessons`}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="p-4">
+                    <div className="flex items-center justify-between gap-2 text-[10px] uppercase tracking-[0.16em] text-[var(--muted)]">
+                      <span>{course.category ? textOf(course.category.name, locale) : 'General'}</span>
+                      <span>{ratingLabel}★</span>
+                    </div>
+
+                    <Link to={`/courses/${course.slug}`} className="mt-2 block line-clamp-2 text-base font-bold leading-snug hover:underline">
+                      {textOf(course.title, locale)}
+                    </Link>
+
+                    <p className="mt-2 line-clamp-2 text-xs leading-5 text-[var(--muted)]">
+                      {textOf(course.short_description || course.description, locale) || 'Course overview, learning goals, and practical outcomes.'}
+                    </p>
+
+                    <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-[var(--muted)]">
+                      <p>Instructor: <span className="font-medium text-black">{course.instructor?.name || 'Happytality'}</span></p>
+                      <p>Lessons: <span className="font-medium text-black">{lessonsCount}</span></p>
+                      <p>Duration: <span className="font-medium text-black">{course.duration_minutes ?? 0} min</span></p>
+                      <p>Reviews: <span className="font-medium text-black">{reviewsCount}</span></p>
+                    </div>
+
+                    <div className="mt-4 flex items-end justify-between gap-3">
+                      <div>
+                        <p className="text-base font-bold">{money(course.sale_price_amount ?? course.price_amount, course.currency || 'USD')}</p>
+                        {course.sale_price_amount ? (
+                          <p className="text-xs text-[var(--muted)] line-through">{money(course.price_amount, course.currency || 'USD')}</p>
+                        ) : null}
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            void addToCart(course.id, 1).then(() => navigate('/checkout'))
+                          }}
+                          className="rounded-full bg-black px-3 py-2 text-[10px] font-semibold tracking-[0.14em] text-white uppercase"
+                        >
+                          Enroll now
+                        </button>
+                        <Link
+                          to={`/courses/${course.slug}`}
+                          className="rounded-full border border-[var(--line)] px-3 py-2 text-[10px] font-semibold tracking-[0.14em] uppercase"
+                        >
+                          Learn more
+                        </Link>
+                      </div>
+                    </div>
+                  </div>
+                </article>
+              )
+            })}
+          </div>
+
+          <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-[18px] border border-[var(--line)] bg-white px-4 py-3">
+            <p className="text-sm text-[var(--muted)]">
+              Page <span className="font-semibold text-black">{currentPage}</span> of{' '}
+              <span className="font-semibold text-black">{pageCount}</span>
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                disabled={currentPage <= 1}
+                onClick={() => setFilter('page', String(currentPage - 1), false)}
+                className="rounded-full border border-[var(--line)] px-3 py-2 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Prev
+              </button>
+              {Array.from({ length: Math.min(5, pageCount) }).map((_, idx) => {
+                const start = Math.max(1, Math.min(currentPage - 2, pageCount - 4))
+                const pageNumber = start + idx
+                if (pageNumber > pageCount) return null
+                return (
+                  <button
+                    key={pageNumber}
+                    type="button"
+                    onClick={() => setFilter('page', String(pageNumber), false)}
+                    className={`grid size-9 place-items-center rounded-full text-xs font-semibold ${
+                      pageNumber === currentPage ? 'bg-black text-white' : 'border border-[var(--line)]'
+                    }`}
+                  >
+                    {pageNumber}
+                  </button>
+                )
+              })}
+              <button
+                type="button"
+                disabled={currentPage >= pageCount}
+                onClick={() => setFilter('page', String(currentPage + 1), false)}
+                className="rounded-full border border-[var(--line)] px-3 py-2 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
 
       <Footer />
@@ -1073,13 +1455,26 @@ function CourseDetailPage() {
   const { locale, addToCart } = useApp()
   const [course, setCourse] = useState<ApiCourse | null>(null)
   const [loading, setLoading] = useState(true)
+  const [activeTab, setActiveTab] = useState<'overview' | 'curriculum' | 'instructor' | 'reviews'>(
+    'overview',
+  )
+  const [relatedCourses, setRelatedCourses] = useState<ApiCourse[]>([])
 
   useEffect(() => {
     if (!slug) return
     setLoading(true)
     api
       .course(slug)
-      .then((res) => setCourse(res.course))
+      .then(async (res) => {
+        setCourse(res.course)
+
+        try {
+          const rel = await api.courses('per_page=8&status=published')
+          setRelatedCourses(rel.data.filter((item) => item.slug !== res.course.slug).slice(0, 4))
+        } catch {
+          setRelatedCourses((fallbackCourses as any).filter((item: any) => item.slug !== res.course.slug).slice(0, 4))
+        }
+      })
       .catch(() => setCourse((fallbackCourses as any)[0]))
       .finally(() => setLoading(false))
   }, [slug])
@@ -1089,61 +1484,567 @@ function CourseDetailPage() {
   }
 
   const price = money(course?.sale_price_amount ?? course?.price_amount, course?.currency || 'USD')
+  const oldPrice = course?.sale_price_amount ? money(course.price_amount, course.currency || 'USD') : null
+  const lessons = course?.lessons?.length ? course.lessons : sampleLessons()
+  const reviews = [
+    {
+      id: 1,
+      name: 'Anna M.',
+      rating: 5,
+      role: 'Student',
+      text: 'Very practical course. Strong structure, clear lessons, and useful examples I could apply right away.',
+    },
+    {
+      id: 2,
+      name: 'Giorgi K.',
+      rating: 4,
+      role: 'Founder',
+      text: 'Great production quality and concise teaching style. Would love a few more advanced case studies.',
+    },
+    {
+      id: 3,
+      name: 'Elena P.',
+      rating: 5,
+      role: 'Marketing Lead',
+      text: 'Exactly the kind of premium niche content we were looking for. Good balance of theory and execution.',
+    },
+  ]
+  const averageRating =
+    reviews.reduce((sum, review) => sum + review.rating, 0) / Math.max(1, reviews.length)
+  const learningPoints = [
+    'Build a repeatable framework instead of random tactics',
+    'Understand positioning, messaging and offer structure',
+    'Translate lessons into a weekly implementation plan',
+    'Track progress and course completion in your profile',
+    'Apply templates to online and offline formats',
+    'Work with multilingual learning content',
+  ]
+  const requirements = [
+    'No prior experience required',
+    'Notebook or digital notes recommended',
+    'Internet access for video lessons',
+    'Best viewed on laptop/tablet for exercises',
+  ]
+  const audience = [
+    'Students and professionals who want structured learning',
+    'Founders, creators and specialists improving practical skills',
+    'Teams onboarding through premium short-form lessons',
+  ]
+  const tags = [
+    course?.type || 'online',
+    course?.category ? textOf(course.category.name, locale) : 'Business',
+    'Beginner',
+    'Certificate',
+    '3 Languages',
+  ].filter(Boolean)
+  const tabList = [
+    ['overview', 'Overview'],
+    ['curriculum', 'Curriculum'],
+    ['instructor', 'Instructor'],
+    ['reviews', 'Reviews'],
+  ] as const
+  const sidebarMeta = [
+    ['Instructor', course?.instructor?.name || 'Happytality'],
+    ['Lessons', String(course?.lessons?.length ?? course?.lessons_count ?? lessons.length)],
+    ['Language', 'KA / EN / RU'],
+    ['Access', 'Lifetime (for purchased course)'],
+    ['Certificate', 'Yes'],
+    ['Format', (course?.type || 'online').toUpperCase()],
+  ]
+  const instructorName = course?.instructor?.name || 'Happytality Instructor'
+  const instructorAvatar =
+    course?.instructor?.avatar_url ||
+    (relatedCourses[0]?.instructor?.avatar_url as string | undefined) ||
+    heroImages[0]
 
   return (
     <>
-      <section className="mt-10 grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
-        <div>
-          <div className="overflow-hidden rounded-[18px] border border-[var(--line)] bg-white">
-            <img src={course?.cover_image_url || heroImages[0]} alt={textOf(course?.title, locale)} className="h-[320px] w-full object-cover sm:h-[420px]" />
-          </div>
-          <div className="mt-5 rounded-[18px] border border-[var(--line)] bg-white p-5">
-            <p className="text-[10px] tracking-[0.18em] text-[var(--muted)] uppercase">{course?.type} course</p>
-            <h1 className="mt-2 text-3xl font-extrabold tracking-tight">{textOf(course?.title, locale)}</h1>
-            <p className="mt-3 text-sm leading-7 text-[var(--muted)]">{textOf(course?.description || course?.short_description, locale) || 'Detailed course page with lessons, promo media, and checkout-ready actions.'}</p>
-            <div className="mt-5 flex flex-wrap gap-2">
-              <span className="rounded-full bg-slate-100 px-3 py-1 text-xs">Instructor: {course?.instructor?.name}</span>
-              <span className="rounded-full bg-slate-100 px-3 py-1 text-xs">Lessons: {course?.lessons?.length ?? course?.lessons_count ?? 0}</span>
-              <span className="rounded-full bg-slate-100 px-3 py-1 text-xs">Duration: {course?.duration_minutes ?? 0} min</span>
+      <section className="mt-10 rounded-[24px] border border-[var(--line)] bg-white p-5 shadow-[0_20px_50px_-45px_rgba(0,0,0,0.35)] sm:p-6">
+        <div className="flex flex-wrap items-center gap-2 text-[11px] text-[var(--muted)]">
+          <Link to="/" className="hover:text-black">Home</Link>
+          <span>/</span>
+          <Link to="/courses" className="hover:text-black">Courses</Link>
+          <span>/</span>
+          <span className="text-black">{textOf(course?.title, locale)}</span>
+        </div>
+
+        <div className="mt-4 grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="rounded-full bg-black px-3 py-1 text-[10px] font-semibold tracking-[0.16em] text-white uppercase">
+                {(course?.type || 'online').toUpperCase()}
+              </span>
+              {course?.category ? (
+                <span className="rounded-full border border-[var(--line)] px-3 py-1 text-[10px] font-semibold tracking-[0.14em] uppercase text-[var(--muted)]">
+                  {textOf(course.category.name, locale)}
+                </span>
+              ) : null}
+            </div>
+
+            <h1 className="mt-4 text-3xl leading-tight font-extrabold tracking-tight sm:text-4xl">
+              {textOf(course?.title, locale)}
+            </h1>
+            <p className="mt-3 max-w-[720px] text-sm leading-7 text-[var(--muted)]">
+              {textOf(course?.description || course?.short_description, locale) ||
+                'A premium course page with curriculum, reviews, instructor information, and purchase-ready sidebar flow.'}
+            </p>
+
+            <div className="mt-5 flex flex-wrap items-center gap-4 text-xs">
+              <div className="flex items-center gap-2 rounded-full border border-[var(--line)] bg-[var(--paper-2)] px-3 py-2">
+                <img
+                  src={instructorAvatar}
+                  alt={instructorName}
+                  className="size-7 rounded-full object-cover"
+                />
+                <div className="leading-tight">
+                  <p className="font-semibold text-black">{instructorName}</p>
+                  <p className="text-[10px] text-[var(--muted)]">Instructor</p>
+                </div>
+              </div>
+              <div className="rounded-full border border-[var(--line)] px-3 py-2">
+                {Number(averageRating).toFixed(1)} / 5.0 ({reviews.length} reviews)
+              </div>
+              <div className="rounded-full border border-[var(--line)] px-3 py-2">
+                {course?.lessons?.length ?? course?.lessons_count ?? lessons.length} lessons
+              </div>
+              <div className="rounded-full border border-[var(--line)] px-3 py-2">
+                {course?.duration_minutes ?? 240} min
+              </div>
+              <div className="rounded-full border border-[var(--line)] px-3 py-2">
+                Updated 2026
+              </div>
             </div>
           </div>
 
-          <div className="mt-5 rounded-[18px] border border-[var(--line)] bg-white p-5">
-            <SectionLabel>Course lessons</SectionLabel>
-            <div className="space-y-3">
-              {(course?.lessons?.length ? course.lessons : sampleLessons()).map((lesson: any) => (
-                <div key={lesson.id || lesson.sort_order} className="rounded-[12px] border border-[var(--line)] p-3">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-semibold">{textOf(lesson.title, locale)}</p>
-                      <p className="mt-1 text-xs text-[var(--muted)]">{textOf(lesson.description, locale)}</p>
-                    </div>
-                    <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] uppercase">{lesson.is_preview ? 'Preview' : 'Lesson'}</span>
-                  </div>
-                </div>
+          <div className="rounded-[18px] border border-[var(--line)] bg-[var(--paper-2)] p-4">
+            <p className="text-[10px] font-semibold tracking-[0.18em] text-[var(--muted)] uppercase">
+              Enrollment offer
+            </p>
+            <p className="mt-3 text-3xl font-extrabold">{price}</p>
+            {oldPrice ? <p className="mt-1 text-sm text-[var(--muted)] line-through">{oldPrice}</p> : null}
+            <div className="mt-4 flex flex-wrap gap-2">
+              {tags.map((tag) => (
+                <span
+                  key={tag}
+                  className="rounded-full border border-[var(--line)] bg-white px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em]"
+                >
+                  {tag}
+                </span>
               ))}
             </div>
           </div>
         </div>
+      </section>
 
-        <aside className="space-y-5">
+      <section className="mt-6 grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+        <div className="overflow-hidden rounded-[18px] border border-[var(--line)] bg-white">
+          <div className="relative">
+            <img
+              src={course?.cover_image_url || heroImages[0]}
+              alt={textOf(course?.title, locale)}
+              className="h-[320px] w-full object-cover sm:h-[440px]"
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent" />
+            <button
+              type="button"
+              className="absolute left-1/2 top-1/2 grid size-14 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full bg-white/95 shadow-xl"
+              onClick={() => {
+                // Scroll to promo video section below
+                document.getElementById('course-promo-video')?.scrollIntoView({ behavior: 'smooth' })
+              }}
+              aria-label="Play course promo"
+            >
+              <span className="ml-1 inline-block size-0 border-y-[8px] border-y-transparent border-l-[13px] border-l-black" />
+            </button>
+          </div>
+        </div>
+
+        <aside className="space-y-5 lg:sticky lg:top-24 lg:self-start">
           <div className="rounded-[18px] border border-[var(--line)] bg-white p-5">
-            <p className="text-sm text-[var(--muted)]">Price</p>
+            <p className="text-sm text-[var(--muted)]">Course Price</p>
             <p className="mt-1 text-3xl font-extrabold">{price}</p>
-            {course?.sale_price_amount ? <p className="text-sm text-[var(--muted)] line-through">{money(course.price_amount, course.currency || 'USD')}</p> : null}
+            {oldPrice ? (
+              <p className="text-sm text-[var(--muted)] line-through">{oldPrice}</p>
+            ) : null}
+
             <div className="mt-4 space-y-2">
-              <button onClick={() => void addToCart(course!.id, 1)} className="w-full rounded-full bg-black px-4 py-3 text-xs font-semibold tracking-[0.16em] text-white uppercase">{t(locale, 'addToCart')}</button>
-              <Link to="/checkout" className="block w-full rounded-full border border-[var(--line)] px-4 py-3 text-center text-xs font-semibold tracking-[0.16em] uppercase">{t(locale, 'buyNow')}</Link>
+              <button
+                onClick={() => void addToCart(course!.id, 1)}
+                className="w-full rounded-full bg-black px-4 py-3 text-xs font-semibold tracking-[0.16em] text-white uppercase"
+              >
+                {t(locale, 'addToCart')}
+              </button>
+              <Link
+                to="/checkout"
+                className="block w-full rounded-full border border-[var(--line)] px-4 py-3 text-center text-xs font-semibold tracking-[0.16em] uppercase"
+              >
+                {t(locale, 'buyNow')}
+              </Link>
+            </div>
+
+            <div className="mt-5 rounded-[14px] bg-[var(--paper-2)] p-4">
+              <p className="text-xs font-semibold tracking-[0.16em] uppercase">This course includes</p>
+              <ul className="mt-3 space-y-2 text-xs text-[var(--muted)]">
+                {sidebarMeta.map(([label, value]) => (
+                  <li key={label} className="flex items-start justify-between gap-3">
+                    <span>{label}</span>
+                    <span className="font-semibold text-black">{value}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            <div className="mt-4 rounded-[14px] border border-[var(--line)] p-4">
+              <p className="text-xs font-semibold tracking-[0.16em] uppercase">Share course</p>
+              <div className="mt-3 flex gap-2 text-xs">
+                {['Copy link', 'Telegram', 'WhatsApp'].map((item) => (
+                  <button
+                    key={item}
+                    type="button"
+                    className="rounded-full border border-[var(--line)] px-3 py-2"
+                    onClick={() => {
+                      if (item === 'Copy link') {
+                        void navigator.clipboard?.writeText(window.location.href)
+                      }
+                    }}
+                  >
+                    {item}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
-          <div className="rounded-[18px] border border-[var(--line)] bg-white p-5">
-            <p className="text-sm font-semibold">Promo video</p>
-            <video controls className="mt-3 h-[210px] w-full rounded-[12px] bg-black object-cover" poster={course?.trailer_image_url || course?.cover_image_url || heroImages[1]}>
-              <source src={course?.promo_video_url || 'https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4'} type="video/mp4" />
+
+          <div
+            id="course-promo-video"
+            className="rounded-[18px] border border-[var(--line)] bg-white p-5"
+          >
+            <p className="text-sm font-semibold">Course Promo Video</p>
+            <video
+              controls
+              className="mt-3 h-[220px] w-full rounded-[12px] bg-black object-cover"
+              poster={course?.trailer_image_url || course?.cover_image_url || heroImages[1]}
+            >
+              <source
+                src={
+                  course?.promo_video_url ||
+                  'https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4'
+                }
+                type="video/mp4"
+              />
             </video>
           </div>
         </aside>
       </section>
+
+      <section className="mt-6 rounded-[18px] border border-[var(--line)] bg-white p-4 sm:p-5">
+        <div className="flex flex-wrap gap-2 border-b border-[var(--line)] pb-4">
+          {tabList.map(([key, label]) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => setActiveTab(key)}
+              className={`rounded-full px-4 py-2 text-xs font-semibold tracking-[0.14em] uppercase ${
+                activeTab === key
+                  ? 'bg-black text-white'
+                  : 'border border-[var(--line)] bg-white text-[#444]'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        <div className="pt-5">
+          {activeTab === 'overview' ? (
+            <div className="grid gap-6 lg:grid-cols-[1fr_1fr]">
+              <div className="space-y-5">
+                <div>
+                  <h2 className="text-xl font-bold">Course Description</h2>
+                  <p className="mt-3 text-sm leading-7 text-[var(--muted)]">
+                    {textOf(course?.description || course?.short_description, locale) ||
+                      'This page follows a full course-detail structure: overview, curriculum, instructor block, reviews, and a purchase-ready sticky sidebar.'}
+                  </p>
+                </div>
+                <div>
+                  <h3 className="text-base font-bold">What you’ll learn</h3>
+                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                    {learningPoints.map((point) => (
+                      <div
+                        key={point}
+                        className="rounded-[12px] border border-[var(--line)] bg-[var(--paper-2)] px-3 py-2 text-sm"
+                      >
+                        {point}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-5">
+                <div className="rounded-[14px] border border-[var(--line)] p-4">
+                  <h3 className="text-base font-bold">Requirements</h3>
+                  <ul className="mt-3 space-y-2 text-sm text-[var(--muted)]">
+                    {requirements.map((item) => (
+                      <li key={item} className="flex gap-2">
+                        <span className="mt-[6px] inline-block h-1.5 w-1.5 rounded-full bg-black" />
+                        <span>{item}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                <div className="rounded-[14px] border border-[var(--line)] p-4">
+                  <h3 className="text-base font-bold">Who this course is for</h3>
+                  <ul className="mt-3 space-y-2 text-sm text-[var(--muted)]">
+                    {audience.map((item) => (
+                      <li key={item} className="flex gap-2">
+                        <span className="mt-[6px] inline-block h-1.5 w-1.5 rounded-full bg-[var(--brand)]" />
+                        <span>{item}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          {activeTab === 'curriculum' ? (
+            <div className="space-y-3">
+              <div className="mb-2 flex flex-wrap items-center justify-between gap-3 rounded-[14px] bg-[var(--paper-2)] px-4 py-3 text-sm">
+                <span>
+                  <strong>{lessons.length}</strong> lessons
+                </span>
+                <span>{course?.duration_minutes ?? 240} minutes total</span>
+              </div>
+              {lessons.map((lesson: any, idx: number) => (
+                <details
+                  key={lesson.id || lesson.sort_order || idx}
+                  className="group rounded-[14px] border border-[var(--line)] bg-white px-4 py-3"
+                  open={idx === 0}
+                >
+                  <summary className="flex cursor-pointer list-none items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold">
+                        {String(lesson.sort_order || idx + 1).padStart(2, '0')}.{' '}
+                        {textOf(lesson.title, locale)}
+                      </p>
+                      <p className="mt-1 text-xs text-[var(--muted)]">
+                        {lesson.duration_seconds
+                          ? `${Math.max(1, Math.round(lesson.duration_seconds / 60))} min`
+                          : 'Approx. 10 min'}
+                        {' · '}
+                        {lesson.is_preview ? 'Preview available' : 'Members only'}
+                      </p>
+                    </div>
+                    <span className="text-lg leading-none transition group-open:rotate-45">+</span>
+                  </summary>
+                  <div className="mt-3 border-t border-[var(--line)] pt-3">
+                    <p className="text-sm leading-6 text-[var(--muted)]">
+                      {textOf(lesson.description, locale) || 'Lesson description and key learning goals.'}
+                    </p>
+                    <div className="mt-3 flex gap-2">
+                      <button
+                        type="button"
+                        className="rounded-full border border-[var(--line)] px-3 py-1.5 text-[10px] font-semibold uppercase"
+                      >
+                        {lesson.is_preview ? 'Watch preview' : 'Locked'}
+                      </button>
+                    </div>
+                  </div>
+                </details>
+              ))}
+            </div>
+          ) : null}
+
+          {activeTab === 'instructor' ? (
+            <div className="grid gap-5 lg:grid-cols-[0.9fr_1.1fr]">
+              <div className="overflow-hidden rounded-[16px] border border-[var(--line)]">
+                <img
+                  src={instructorAvatar}
+                  alt={instructorName}
+                  className="h-[280px] w-full object-cover"
+                />
+              </div>
+              <div className="rounded-[16px] border border-[var(--line)] bg-[var(--paper-2)] p-5">
+                <p className="text-[10px] font-semibold tracking-[0.16em] uppercase text-[var(--muted)]">
+                  Instructor
+                </p>
+                <h3 className="mt-2 text-2xl font-extrabold">{instructorName}</h3>
+                <p className="mt-2 text-sm text-[var(--muted)]">
+                  {course?.instructor?.headline || 'Expert instructor with a practical and structured teaching style.'}
+                </p>
+                <div className="mt-4 grid grid-cols-2 gap-3">
+                  <div className="rounded-[12px] bg-white p-3">
+                    <p className="text-xs text-[var(--muted)]">Rating</p>
+                    <p className="text-lg font-bold">{averageRating.toFixed(1)}/5</p>
+                  </div>
+                  <div className="rounded-[12px] bg-white p-3">
+                    <p className="text-xs text-[var(--muted)]">Students</p>
+                    <p className="text-lg font-bold">58,340+</p>
+                  </div>
+                </div>
+                <p className="mt-4 text-sm leading-7 text-[#333]">
+                  This instructor page section mirrors marketplace course templates: profile summary,
+                  credibility metrics, and direct access to all instructor courses.
+                </p>
+                <div className="mt-4 flex gap-2">
+                  <Link
+                    to={`/instructors/${course?.instructor?.id ?? 1}`}
+                    className="rounded-full bg-black px-4 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-white"
+                  >
+                    View instructor page
+                  </Link>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          {activeTab === 'reviews' ? (
+            <div className="grid gap-5 lg:grid-cols-[0.8fr_1.2fr]">
+              <div className="rounded-[16px] border border-[var(--line)] bg-[var(--paper-2)] p-5">
+                <p className="text-[10px] font-semibold tracking-[0.16em] uppercase text-[var(--muted)]">
+                  Student Rating
+                </p>
+                <p className="mt-2 text-4xl font-extrabold">{averageRating.toFixed(1)}</p>
+                <div className="mt-2 flex gap-1 text-amber-500">
+                  {Array.from({ length: 5 }).map((_, idx) => (
+                    <span key={idx}>{idx < Math.round(averageRating) ? '★' : '☆'}</span>
+                  ))}
+                </div>
+                <p className="mt-2 text-sm text-[var(--muted)]">Based on {reviews.length} reviews</p>
+                <div className="mt-4 space-y-2">
+                  {[5, 4, 3, 2, 1].map((stars) => {
+                    const count = reviews.filter((r) => r.rating === stars).length
+                    const percent = (count / reviews.length) * 100
+                    return (
+                      <div key={stars} className="grid grid-cols-[40px_1fr_34px] items-center gap-2 text-xs">
+                        <span>{stars}★</span>
+                        <div className="h-2 rounded-full bg-white">
+                          <div className="h-full rounded-full bg-black" style={{ width: `${percent}%` }} />
+                        </div>
+                        <span className="text-right">{count}</span>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+              <div className="space-y-3">
+                {reviews.map((review) => (
+                  <article
+                    key={review.id}
+                    className="rounded-[16px] border border-[var(--line)] bg-white p-4"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold">{review.name}</p>
+                        <p className="text-xs text-[var(--muted)]">{review.role}</p>
+                      </div>
+                      <p className="text-xs text-amber-500">
+                        {Array.from({ length: 5 }).map((_, idx) => (idx < review.rating ? '★' : '☆')).join('')}
+                      </p>
+                    </div>
+                    <p className="mt-3 text-sm leading-6 text-[var(--muted)]">{review.text}</p>
+                  </article>
+                ))}
+              </div>
+            </div>
+          ) : null}
+        </div>
+      </section>
+
+      <section className="mt-6 grid gap-6 lg:grid-cols-[1fr_1fr]">
+        <div className="rounded-[18px] border border-[var(--line)] bg-white p-5">
+          <h2 className="text-xl font-bold">Frequently Asked Questions</h2>
+          <div className="mt-4 space-y-2">
+            {[
+              'Can I buy this course individually?',
+              'Will I get a certificate after completion?',
+              'Can I watch lessons on mobile devices?',
+              'Are Georgian, English and Russian supported?',
+            ].map((item, idx) => (
+              <details key={item} className="group rounded-[12px] border border-[var(--line)] px-4 py-3" open={idx === 0}>
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-sm font-medium">
+                  <span>{item}</span>
+                  <span className="text-lg leading-none transition group-open:rotate-45">+</span>
+                </summary>
+                <p className="mt-3 text-sm leading-6 text-[var(--muted)]">
+                  Yes. The current platform supports course-level purchases with cart and checkout flow,
+                  and is prepared for Bank of Georgia payment gateway integration.
+                </p>
+              </details>
+            ))}
+          </div>
+        </div>
+
+        <div className="rounded-[18px] border border-[var(--line)] bg-white p-5">
+          <h2 className="text-xl font-bold">Course Features</h2>
+          <div className="mt-4 grid grid-cols-2 gap-3">
+            {[
+              ['Level', 'Beginner'],
+              ['Delivery', course?.type || 'online'],
+              ['Videos', `${lessons.length}`],
+              ['Language', 'KA/EN/RU'],
+              ['Certificate', 'Included'],
+              ['Support', 'Email'],
+            ].map(([label, value]) => (
+              <div key={label} className="rounded-[12px] bg-[var(--paper-2)] p-3">
+                <p className="text-xs text-[var(--muted)]">{label}</p>
+                <p className="mt-1 text-sm font-semibold">{value}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="mt-6 rounded-[18px] border border-[var(--line)] bg-white p-5">
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <div>
+            <SectionLabel>Related courses</SectionLabel>
+            <h2 className="text-xl font-bold">More courses you may like</h2>
+          </div>
+          <Link
+            to="/courses"
+            className="rounded-full border border-[var(--line)] px-4 py-2 text-xs font-semibold uppercase tracking-[0.14em]"
+          >
+            View catalog
+          </Link>
+        </div>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {(relatedCourses.length ? relatedCourses : (fallbackCourses as any)).slice(0, 4).map((item: any, idx: number) => (
+            <div key={item.id} className="overflow-hidden rounded-[14px] border border-[var(--line)] bg-[var(--paper-2)]">
+              <Link to={`/courses/${item.slug}`}>
+                <img
+                  src={item.cover_image_url || heroImages[idx % heroImages.length]}
+                  alt={textOf(item.title, locale)}
+                  className="h-[180px] w-full object-cover"
+                />
+              </Link>
+              <div className="p-4">
+                <p className="text-[10px] tracking-[0.16em] text-[var(--muted)] uppercase">
+                  {item.type}
+                </p>
+                <Link to={`/courses/${item.slug}`} className="mt-2 block text-sm font-bold leading-snug hover:underline">
+                  {textOf(item.title, locale)}
+                </Link>
+                <p className="mt-1 text-xs text-[var(--muted)]">{item.instructor?.name || 'Happytality'}</p>
+                <div className="mt-3 flex items-center justify-between gap-2">
+                  <span className="text-sm font-semibold">
+                    {money(item.sale_price_amount ?? item.price_amount, item.currency || 'USD')}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => void addToCart(item.id, 1)}
+                    className="rounded-full bg-black px-3 py-1.5 text-[10px] font-semibold text-white uppercase"
+                  >
+                    Add
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
       <Footer />
     </>
   )

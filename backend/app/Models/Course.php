@@ -69,4 +69,14 @@ class Course extends Model
     {
         return $this->hasMany(CourseOrder::class);
     }
+
+    public function reviews(): HasMany
+    {
+        return $this->hasMany(CourseReview::class)->latest();
+    }
+
+    public function faqs(): HasMany
+    {
+        return $this->hasMany(CourseFaq::class)->orderBy('sort_order');
+    }
 }

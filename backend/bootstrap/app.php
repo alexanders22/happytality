@@ -12,7 +12,8 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        $middleware->statefulApi();
+        // We currently use Sanctum personal access tokens (Bearer) for SPA auth.
+        // Stateful cookie auth can be enabled later together with /sanctum/csrf-cookie flow.
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         //

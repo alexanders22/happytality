@@ -34,9 +34,16 @@ export type ApiCourse = {
   duration_minutes?: number
   status?: string
   is_featured?: boolean
+  published_at?: string | null
+  starts_at?: string | null
+  popularity_score?: number
+  avg_rating?: number | string | null
+  reviews_count?: number
   instructor?: { id: number; name: string; avatar_url?: string | null; headline?: string | null } | null
   category?: { id: number; slug: string; name: Record<string, string> } | null
   lessons?: ApiLesson[]
+  reviews?: ApiCourseReview[]
+  faqs?: ApiCourseFaq[]
 }
 
 export type ApiLesson = {
@@ -50,6 +57,29 @@ export type ApiLesson = {
   duration_seconds?: number
   is_preview?: boolean
   is_published?: boolean
+}
+
+export type ApiCourseReview = {
+  id: number
+  course_id: number
+  user_id?: number | null
+  author_name: string
+  author_role?: string | null
+  rating: number
+  review: string
+  locale?: ApiLocale | string
+  status?: string
+  helpful_count?: number
+  created_at?: string
+}
+
+export type ApiCourseFaq = {
+  id: number
+  course_id: number
+  question: Record<string, string> | string
+  answer: Record<string, string> | string
+  sort_order?: number
+  is_active?: boolean
 }
 
 export type ApiInstructor = {
