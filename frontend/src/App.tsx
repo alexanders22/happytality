@@ -56,7 +56,7 @@ const dictionary: Record<ApiLocale, Record<string, string>> = {
     profile: 'Profile',
     instructorDashboard: 'Instructor',
     admin: 'Admin',
-    auth: 'Login / Register',
+    auth: 'Get Started',
     searchCourses: 'Search courses',
     startLearning: 'Start Learning',
     addToCart: 'Add to cart',
@@ -300,8 +300,8 @@ function HeroGalleryColumn({
 function HeroMovingGallery({ dark = false }: { dark?: boolean }) {
   return (
     <div
-      className={`relative overflow-hidden rounded-[26px] border p-3 shadow-[0_25px_60px_-40px_rgba(0,0,0,0.35)] ${
-        dark ? 'border-white/10 bg-[#0f131b]' : 'border-[var(--line)] bg-white/60'
+      className={`relative overflow-hidden rounded-[26px] p-3 ${
+        dark ? 'border-white/10 bg-[#0f131b]' : 'border-[var(--line)] bg-white/20'
       }`}
     >
       <div className="pointer-events-none absolute inset-0 opacity-70">
@@ -511,7 +511,12 @@ function PageContainer({ children }: { children: ReactNode }) {
 }
 
 function SectionLabel({ children }: { children: string }) {
-  return <p className="mb-4 text-[10px] font-semibold tracking-[0.22em] text-[#37352f] uppercase">{children}</p>
+  const { theme } = useApp()
+  return (
+    <p className={`mb-4 text-[10px] font-semibold tracking-[0.22em] uppercase ${theme === 'dark' ? 'text-white/75' : 'text-[#37352f]'}`}>
+      {children}
+    </p>
+  )
 }
 
 function Shell() {
@@ -759,36 +764,38 @@ function Shell() {
 }
 
 function Footer() {
+  const { theme } = useApp()
+  const isDark = theme === 'dark'
   return (
-    <footer className="mt-16 rounded-[22px] border border-[var(--line)] bg-white/75 p-4 sm:p-6">
-      <div className="mb-5 rounded-[14px] bg-[#f0ecf3] px-4 py-3 text-xs leading-6 text-[#4d4a46]">
+    <footer className={`mt-16 rounded-[22px] border p-4 sm:p-6 ${isDark ? 'border-[var(--line)] bg-[#0d1118]' : 'border-[var(--line)] bg-white/75'}`}>
+      <div className={`mb-5 rounded-[14px] px-4 py-3 text-xs leading-6 ${isDark ? 'bg-[var(--brand-taupe)]/14 text-white/80' : 'bg-[#f0ecf3] text-[#4d4a46]'}`}>
         Happytality is a niche online-course platform: instructors, courses, user profiles, checkout flow, multilingual content, and admin operations.
       </div>
       <div className="grid gap-5 lg:grid-cols-[1.2fr_1fr_1fr_1fr_1.2fr]">
-        <div className="rounded-[14px] border border-[var(--line)] bg-[#f7d6bf] p-4">
-          <p className="text-[9px] tracking-[0.2em] uppercase text-[#4d4138]">Certificate</p>
+        <div className={`rounded-[14px] border p-4 ${isDark ? 'border-[var(--brand-rust)]/20 bg-[var(--brand-rust)]/12' : 'border-[var(--line)] bg-[#f7d6bf]'}`}>
+          <p className={`text-[9px] tracking-[0.2em] uppercase ${isDark ? 'text-white/70' : 'text-[#4d4138]'}`}>Certificate</p>
           <h3 className="mt-3 text-2xl font-semibold">Certificate of appreciation</h3>
-          <p className="mt-3 text-xs text-[#4d4138]">Issued after finishing a course path and final assessment.</p>
+          <p className={`mt-3 text-xs ${isDark ? 'text-white/75' : 'text-[#4d4138]'}`}>Issued after finishing a course path and final assessment.</p>
         </div>
         <FooterList title="Membership" items={['Access plans', 'Progress tracking', 'Bookmarks', 'Saved courses', 'Certificates']} />
         <FooterList title="Categories" items={['Marketing', 'Speaking', 'Design', 'Business', 'Lifestyle']} />
         <div>
           <p className="mb-3 text-[10px] font-semibold tracking-[0.16em] uppercase">Quick Access</p>
-          <div className="space-y-2 text-xs text-[var(--muted)]">
-            <Link to="/courses" className="block hover:text-black">Courses</Link>
-            <Link to="/instructors" className="block hover:text-black">Instructors</Link>
-            <Link to="/messages" className="block hover:text-black">Messages</Link>
-            <Link to="/about" className="block hover:text-black">About Us</Link>
-            <Link to="/cart" className="block hover:text-black">Cart</Link>
+          <div className={`space-y-2 text-xs ${isDark ? 'text-white/70' : 'text-[var(--muted)]'}`}>
+            <Link to="/courses" className={`block ${isDark ? 'hover:text-white' : 'hover:text-black'}`}>Courses</Link>
+            <Link to="/instructors" className={`block ${isDark ? 'hover:text-white' : 'hover:text-black'}`}>Instructors</Link>
+            <Link to="/messages" className={`block ${isDark ? 'hover:text-white' : 'hover:text-black'}`}>Messages</Link>
+            <Link to="/about" className={`block ${isDark ? 'hover:text-white' : 'hover:text-black'}`}>About Us</Link>
+            <Link to="/cart" className={`block ${isDark ? 'hover:text-white' : 'hover:text-black'}`}>Cart</Link>
           </div>
         </div>
         <div className="space-y-3 text-xs text-[var(--muted)]">
           <div className="flex items-center justify-between">
             <span className="font-semibold uppercase tracking-[0.16em]">Contact</span>
-            <span className="brand-script text-2xl leading-none text-black">happytality</span>
+            <span className={`brand-script text-2xl leading-none ${isDark ? 'text-white' : 'text-black'}`}>happytality</span>
           </div>
-          <div className="rounded-[10px] border border-[var(--line)] bg-[var(--paper-2)] p-3">
-            <p className="font-semibold text-black">hello@happytality.com</p>
+          <div className={`rounded-[10px] border p-3 ${isDark ? 'border-[var(--line)] bg-[var(--brand-blue)]/10' : 'border-[var(--line)] bg-[var(--paper-2)]'}`}>
+            <p className={`font-semibold ${isDark ? 'text-white' : 'text-black'}`}>hello@happytality.com</p>
             <p>+995 588 84 39 28</p>
             <p className="mt-2">Tbilisi, Georgia</p>
             <p className="mt-2">Languages: KA / EN / RU</p>
@@ -800,10 +807,11 @@ function Footer() {
 }
 
 function FooterList({ title, items }: { title: string; items: string[] }) {
+  const { theme } = useApp()
   return (
     <div>
       <p className="mb-3 text-[10px] font-semibold tracking-[0.16em] uppercase">{title}</p>
-      <ul className="space-y-2 text-xs text-[var(--muted)]">
+      <ul className={`space-y-2 text-xs ${theme === 'dark' ? 'text-white/70' : 'text-[var(--muted)]'}`}>
         {items.map((it) => (
           <li key={it}>{it}</li>
         ))}
@@ -813,11 +821,12 @@ function FooterList({ title, items }: { title: string; items: string[] }) {
 }
 
 function PageSection({ title, subtitle, actions }: { title: string; subtitle?: string; actions?: ReactNode }) {
+  const { theme } = useApp()
   return (
     <div className="mt-10 mb-5 flex flex-wrap items-end justify-between gap-4">
       <div>
         <h1 className="text-3xl font-extrabold tracking-tight sm:text-4xl">{title}</h1>
-        {subtitle ? <p className="mt-2 text-sm text-[var(--muted)]">{subtitle}</p> : null}
+        {subtitle ? <p className={`mt-2 text-sm ${theme === 'dark' ? 'text-white/65' : 'text-[var(--muted)]'}`}>{subtitle}</p> : null}
       </div>
       {actions}
     </div>
@@ -906,7 +915,7 @@ function LandingPage() {
               type="button"
               onClick={() => navigate('/courses')}
               className={`rounded-full px-5 py-3 text-xs font-semibold tracking-[0.16em] text-white uppercase shadow-[0_10px_24px_-14px_rgba(0,0,0,0.6)] ${
-                isDark ? 'bg-[var(--brand)]' : 'bg-black'
+                isDark ? 'bg-[var(--brand-rust)] hover:bg-[var(--brand-blue)]' : 'bg-black'
               }`}
             >
               {t(locale, 'startLearning')}
@@ -916,7 +925,7 @@ function LandingPage() {
               onClick={() => setVideoOpen((v) => !v)}
               className={`inline-flex items-center gap-3 text-xs font-semibold tracking-[0.14em] uppercase ${isDark ? 'text-white' : 'text-[#1f1f1f]'}`}
             >
-              <span className={`grid size-10 place-items-center rounded-full border ${isDark ? 'border-white/20 bg-white/5' : 'border-[var(--line)] bg-white'}`}>
+              <span className={`grid size-10 place-items-center rounded-full border ${isDark ? 'border-[color:var(--brand-taupe)]/40 bg-white/5' : 'border-[var(--line)] bg-white'}`}>
                 <span className={`ml-0.5 inline-block size-0 border-y-[5px] border-y-transparent ${isDark ? 'border-l-[8px] border-l-white' : 'border-l-[8px] border-l-black'}`} />
               </span>
               {videoOpen ? 'Hide intro' : 'Play intro'}
@@ -959,13 +968,13 @@ function LandingPage() {
         </div>
 
         <div className={`relative overflow-hidden rounded-[20px] ${isDark ? 'bg-[#05070a]' : 'bg-[#111]'} shadow-[0_25px_60px_-45px_rgba(0,0,0,0.8)]`}>
-          <img src={heroImages[0]} alt="Featured" className="h-[220px] w-full object-cover opacity-80 sm:h-[300px]" />
+          <img src={heroImages[0]} alt="Featured" className="h-[400px] w-full object-cover opacity-80" />
           <div className="absolute inset-0 bg-gradient-to-r from-black/60 via-black/15 to-black/55" />
           <div className="absolute inset-0 flex items-end justify-between gap-4 p-5 sm:items-center sm:p-8">
             <div>
               <p className="text-[10px] tracking-[0.18em] text-white/80 uppercase">Happytality Academy</p>
               <h2 className="mt-2 text-3xl leading-none font-extrabold text-white sm:text-5xl">BIG WIN</h2>
-              <button onClick={() => navigate('/instructors')} className="mt-4 rounded-full border border-white/70 px-4 py-2 text-[11px] font-semibold tracking-[0.14em] text-white uppercase">
+              <button onClick={() => navigate('/instructors')} className={`mt-4 rounded-full border px-4 py-2 text-[11px] font-semibold tracking-[0.14em] text-white uppercase ${isDark ? 'border-[var(--brand-blue)]/80 bg-[var(--brand-blue)]/10 hover:bg-[var(--brand-blue)]/20' : 'border-white/70'}`}>
                 All instructors
               </button>
             </div>
@@ -985,7 +994,7 @@ function LandingPage() {
                 className="h-[180px] w-full object-cover transition duration-300 group-hover:scale-105"
               />
               <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/25 to-transparent" />
-              <span className="absolute left-2 top-2 rounded-full bg-white px-2 py-0.5 text-[9px] font-semibold">
+              <span className={`absolute left-2 top-2 rounded-full px-2 py-0.5 text-[9px] font-semibold ${isDark ? 'bg-[var(--brand-cream)] text-[#1b1b1b]' : 'bg-white'}`}>
                 {instructor.instructor_profile?.status === 'approved' ? 'Top' : 'New'}
               </span>
               <div className="absolute inset-x-0 bottom-0 p-3 text-white">
@@ -1000,16 +1009,20 @@ function LandingPage() {
         </div>
       </section>
 
-      <section className="mt-14 rounded-[22px] border border-[var(--line)] bg-[var(--paper-2)] p-5 sm:p-7">
+      <section className={`mt-14 rounded-[22px] border p-5 sm:p-7 ${isDark ? 'border-[var(--line)] bg-[#10141b]' : 'border-[var(--line)] bg-[var(--paper-2)]'}`}>
         <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr] lg:items-center">
           <div>
-            <p className="max-w-[520px] text-2xl leading-tight font-bold text-[#161616] sm:text-3xl">
+            <p className={`max-w-[520px] w-[300px] text-2xl leading-tight font-bold sm:text-3xl ${isDark ? 'text-white' : 'text-[#161616]'}`}>
               Find out about the latest courses with the <span className="text-[var(--brand)]">Academy newsletter</span>
             </p>
           </div>
-          <form className="relative flex items-center rounded-[22px] bg-[var(--brand)] p-4 sm:p-5" onSubmit={(e) => e.preventDefault()}>
-            <input type="email" placeholder="Email address" className="w-full rounded-full bg-white px-4 py-3 pr-[112px] text-sm text-black outline-none placeholder:text-[#7d7d7d]" />
-            <button type="submit" className="absolute right-7 rounded-full bg-black px-5 py-2 text-[11px] font-semibold tracking-[0.16em] text-white uppercase">Join</button>
+          <form
+            className={`relative flex items-center rounded-[22px] p-4 sm:p-5 ${isDark ? 'bg-[var(--brand-blue)]/75 border border-[var(--brand-blue)]/50' : 'bg-[var(--brand)]'}`}
+            onSubmit={(e) => e.preventDefault()}
+          >
+            <div className={`absolute right-3 top-1/2 hidden h-[82px] w-[120px] -translate-y-1/2 rounded-[18px] sm:block ${isDark ? 'bg-[var(--brand-blue)]/95' : 'bg-[var(--brand)]/95'}`} />
+            <input type="email" placeholder="Email address" className={`relative z-10 w-full rounded-full px-4 py-3 pr-[112px] text-sm outline-none ${isDark ? 'bg-[#eae7e1] text-[#171717] placeholder:text-[#757575]' : 'bg-white text-black placeholder:text-[#7d7d7d]'}`} />
+            <button type="submit" className={`absolute right-7 z-10 rounded-full px-5 py-2 text-[11px] font-semibold tracking-[0.16em] text-white uppercase ${isDark ? 'bg-[var(--brand-rust)] hover:bg-[var(--brand-olive)]' : 'bg-black'}`}>Join</button>
           </form>
         </div>
       </section>
@@ -1018,8 +1031,8 @@ function LandingPage() {
         <div className="mb-5 flex items-center justify-between">
           <SectionLabel>Popular courses</SectionLabel>
           <div className="hidden gap-2 sm:flex">
-            <button onClick={() => scrollBy(courseSliderRef, -500)} className="grid size-8 place-items-center rounded-full border border-[var(--line)] bg-white">‹</button>
-            <button onClick={() => scrollBy(courseSliderRef, 500)} className="grid size-8 place-items-center rounded-full border border-[var(--line)] bg-white">›</button>
+            <button onClick={() => scrollBy(courseSliderRef, -500)} className={`grid size-8 place-items-center rounded-full border ${isDark ? 'border-white/15 bg-white/5 text-white' : 'border-[var(--line)] bg-white'}`}>‹</button>
+            <button onClick={() => scrollBy(courseSliderRef, 500)} className={`grid size-8 place-items-center rounded-full border ${isDark ? 'border-white/15 bg-white/5 text-white' : 'border-[var(--line)] bg-white'}`}>›</button>
           </div>
         </div>
 
@@ -1029,8 +1042,14 @@ function LandingPage() {
               key={cat.slug}
               type="button"
               onClick={() => setActiveCategory(cat.slug)}
-              className={`rounded-full border px-3 py-1.5 text-[10px] font-semibold tracking-[0.14em] uppercase ${
-                activeCategory === cat.slug ? 'border-black bg-black text-white' : 'border-[var(--line)] bg-white text-[#2c2b28]'
+              className={`rounded-full border px-3 py-1.5 text-sm font-semibold tracking-[0.14em] uppercase ${
+                activeCategory === cat.slug
+                  ? isDark
+                    ? 'border-[var(--brand-olive)] bg-[var(--brand-olive)] text-white'
+                    : 'border-black bg-black text-white'
+                  : isDark
+                    ? 'border-white/15 bg-[#11161e] text-white/85'
+                    : 'border-[var(--line)] bg-white text-[#2c2b28]'
               }`}
             >
               {cat.label}
@@ -1058,7 +1077,7 @@ function LandingPage() {
                   <button
                     type="button"
                     onClick={() => void addToCart(course.id, 1)}
-                    className="rounded-full bg-white px-3 py-1 text-[10px] font-semibold text-black uppercase"
+                    className={`rounded-full px-3 py-1 text-[10px] font-semibold uppercase ${isDark ? 'bg-[var(--brand-cream)] text-[#151515]' : 'bg-white text-black'}`}
                   >
                     {t(locale, 'addToCart')}
                   </button>
@@ -1076,7 +1095,7 @@ function LandingPage() {
         </div>
 
         <div className="mt-4 flex justify-end">
-          <Link to="/courses" className="rounded-full border border-[var(--line)] bg-white px-4 py-2 text-xs font-semibold">Open catalog</Link>
+          <Link to="/courses" className={`rounded-full border px-4 py-2 text-xs font-semibold ${isDark ? 'border-[var(--brand-blue)]/60 bg-[var(--brand-blue)]/10 text-white hover:bg-[var(--brand-blue)]/20' : 'border-[var(--line)] bg-white'}`}>Open catalog</Link>
         </div>
       </section>
 
@@ -1100,9 +1119,9 @@ function LandingPage() {
           Search among <span className="text-[var(--brand)]">{Number(coursesCount).toLocaleString()}</span> courses and find your favorite course
         </h2>
         <div className="mx-auto mt-8 flex max-w-[760px] flex-col items-stretch gap-3 sm:flex-row">
-          <button type="button" onClick={() => navigate('/courses')} className="rounded-full bg-black px-5 py-3 text-xs font-semibold tracking-[0.16em] text-white uppercase">Open Catalog</button>
-          <button type="button" onClick={() => navigate('/instructors')} className="rounded-full border border-[var(--line)] bg-white px-5 py-3 text-xs font-semibold tracking-[0.16em] text-[#555] uppercase">Browse Instructors</button>
-          <button type="button" onClick={() => navigate('/courses?q=marketing')} className="rounded-full border border-[var(--line)] bg-white px-5 py-3 text-xs font-semibold tracking-[0.16em] text-[#555] uppercase">Try Search</button>
+          <button type="button" onClick={() => navigate('/courses')} className={`rounded-full px-5 py-3 text-xs font-semibold tracking-[0.16em] text-white uppercase ${isDark ? 'bg-[var(--brand-rust)]' : 'bg-black'}`}>Open Catalog</button>
+          <button type="button" onClick={() => navigate('/instructors')} className={`rounded-full border px-5 py-3 text-xs font-semibold tracking-[0.16em] uppercase ${isDark ? 'border-[var(--brand-blue)]/50 bg-[var(--brand-blue)]/10 text-white' : 'border-[var(--line)] bg-white text-[#555]'}`}>Browse Instructors</button>
+          <button type="button" onClick={() => navigate('/courses?q=marketing')} className={`rounded-full border px-5 py-3 text-xs font-semibold tracking-[0.16em] uppercase ${isDark ? 'border-[var(--brand-taupe)]/45 bg-[var(--brand-taupe)]/12 text-white' : 'border-[var(--line)] bg-white text-[#555]'}`}>Try Search</button>
         </div>
       </section>
 
@@ -1113,6 +1132,8 @@ function LandingPage() {
 }
 
 function FAQSection() {
+  const { theme } = useApp()
+  const isDark = theme === 'dark'
   const faqs = [
     'Can I watch on mobile or TV?',
     'Can I buy separate courses?',
@@ -1131,7 +1152,14 @@ function FAQSection() {
             <p className="mb-2 text-[10px] tracking-[0.2em] text-[var(--muted)] uppercase">{idx === 0 ? 'General' : 'Platform'}</p>
             <div className="space-y-2">
               {block.map((item) => (
-                <details key={item} className="group rounded-[8px] border border-[#23262d] bg-[#1d2026] px-4 py-3 text-white">
+                <details
+                  key={item}
+                  className={`group rounded-[8px] border px-4 py-3 text-white ${
+                    isDark
+                      ? 'border-[var(--line)] bg-[#12161d]'
+                      : 'border-[#23262d] bg-[#1d2026]'
+                  }`}
+                >
                   <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-xs font-medium">
                     <span>{item}</span>
                     <span className="text-lg leading-none transition group-open:rotate-45">+</span>
@@ -2466,13 +2494,20 @@ function AuthScreen({ mode }: { mode: 'login' | 'register' }) {
   }
 
   const isLogin = mode === 'login'
+  const authHeroBg = isLogin
+    ? 'linear-gradient(140deg, rgba(123,112,106,0.88) 0%, #10131a 45%, rgba(58,111,149,0.55) 100%)'
+    : 'linear-gradient(140deg, rgba(139,67,53,0.9) 0%, #11131b 42%, rgba(77,102,49,0.52) 100%)'
 
   return (
     <>
       <section className="mt-8 grid min-h-[calc(100vh-180px)] gap-6 lg:grid-cols-[1.03fr_0.97fr]">
-        <div className="relative overflow-hidden rounded-[26px] border border-[var(--line)] bg-[#11131b] p-5 text-white sm:p-7">
-          <div className="absolute -left-12 top-8 h-40 w-40 rounded-full bg-[#2f5d7f]/45 blur-2xl" />
-          <div className="absolute -right-10 bottom-10 h-48 w-48 rounded-full bg-[#f2b680]/25 blur-2xl" />
+        <div
+          className="relative overflow-hidden rounded-[26px] border border-[var(--line)] p-5 text-white sm:p-7"
+          style={{ background: authHeroBg }}
+        >
+          <div className="absolute -left-12 top-8 h-40 w-40 rounded-full bg-[var(--brand-blue)]/35 blur-2xl" />
+          <div className="absolute -right-10 bottom-10 h-48 w-48 rounded-full bg-[var(--brand-rust)]/25 blur-2xl" />
+          <div className="absolute right-20 top-20 h-32 w-32 rounded-full bg-[var(--brand-olive)]/20 blur-2xl" />
           <div className="relative z-10">
             <div className="flex items-center justify-between gap-3">
               <Link to="/" className="rounded-full border border-white/15 bg-white/5 px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em]">
@@ -2498,12 +2533,12 @@ function AuthScreen({ mode }: { mode: 'login' | 'register' }) {
             </div>
 
             <div className="mt-8 grid gap-4 sm:grid-cols-2">
-              <div className="rounded-[18px] border border-white/10 bg-white/5 p-4 backdrop-blur">
+              <div className={`rounded-[18px] border p-4 backdrop-blur ${isLogin ? 'border-white/10 bg-white/5' : 'border-[var(--brand-rust)]/25 bg-[var(--brand-rust)]/10'}`}>
                 <p className="text-[10px] tracking-[0.16em] uppercase text-white/70">Learning</p>
                 <p className="mt-2 text-2xl font-bold">58,340+</p>
                 <p className="mt-1 text-xs text-white/70">Learners across online, live and offline formats</p>
               </div>
-              <div className="rounded-[18px] border border-white/10 bg-white/5 p-4 backdrop-blur">
+              <div className={`rounded-[18px] border p-4 backdrop-blur ${isLogin ? 'border-[var(--brand-blue)]/25 bg-[var(--brand-blue)]/12' : 'border-[var(--brand-olive)]/30 bg-[var(--brand-olive)]/12'}`}>
                 <p className="text-[10px] tracking-[0.16em] uppercase text-white/70">Formats</p>
                 <p className="mt-2 text-2xl font-bold">6+</p>
                 <p className="mt-1 text-xs text-white/70">Recorded courses, live courses, webinars, retreats</p>
@@ -2511,13 +2546,13 @@ function AuthScreen({ mode }: { mode: 'login' | 'register' }) {
             </div>
 
             <div className="mt-8 grid gap-3 sm:grid-cols-[1.1fr_0.9fr]">
-              <div className="overflow-hidden rounded-[20px] border border-white/10 bg-white/5 p-3">
+              <div className={`overflow-hidden rounded-[20px] border p-3 ${isLogin ? 'border-white/10 bg-white/5' : 'border-[var(--brand-olive)]/20 bg-black/15'}`}>
                 <img
                   src={heroImages[0]}
                   alt="Learning visual"
                   className="h-[190px] w-full rounded-[14px] object-cover"
                 />
-                <div className="mt-3 rounded-[14px] border border-white/10 bg-black/20 p-3">
+                <div className={`mt-3 rounded-[14px] border p-3 ${isLogin ? 'border-white/10 bg-black/20' : 'border-[var(--brand-rust)]/20 bg-[var(--brand-rust)]/8'}`}>
                   <p className="text-sm font-semibold">Your workspace</p>
                   <p className="mt-1 text-xs text-white/70">
                     Dashboard, messages, payments, saved courses, reminders and progress tracking.
@@ -2525,15 +2560,15 @@ function AuthScreen({ mode }: { mode: 'login' | 'register' }) {
                 </div>
               </div>
               <div className="space-y-3">
-                <div className="rounded-[20px] border border-white/10 bg-white/5 p-4">
+                <div className={`rounded-[20px] border p-4 ${isLogin ? 'border-white/10 bg-white/5' : 'border-[var(--brand-blue)]/25 bg-[var(--brand-blue)]/10'}`}>
                   <p className="text-xs font-semibold uppercase tracking-[0.16em] text-white/70">Roles</p>
                   <div className="mt-3 space-y-2 text-sm">
-                    <div className="rounded-[10px] bg-white/10 px-3 py-2">Student dashboard</div>
-                    <div className="rounded-[10px] bg-white/10 px-3 py-2">Instructor dashboard</div>
-                    <div className="rounded-[10px] bg-white/10 px-3 py-2">Admin control panel</div>
+                    <div className={`rounded-[10px] px-3 py-2 ${isLogin ? 'bg-white/10' : 'bg-[var(--brand-blue)]/18'}`}>Student dashboard</div>
+                    <div className={`rounded-[10px] px-3 py-2 ${isLogin ? 'bg-white/10' : 'bg-[var(--brand-rust)]/16'}`}>Instructor dashboard</div>
+                    <div className={`rounded-[10px] px-3 py-2 ${isLogin ? 'bg-white/10' : 'bg-[var(--brand-olive)]/16'}`}>Admin control panel</div>
                   </div>
                 </div>
-                <div className="rounded-[20px] border border-white/10 bg-white/5 p-4">
+                <div className={`rounded-[20px] border p-4 ${isLogin ? 'border-white/10 bg-white/5' : 'border-[var(--brand-taupe)]/20 bg-[var(--brand-taupe)]/10'}`}>
                   <p className="text-xs font-semibold uppercase tracking-[0.16em] text-white/70">Demo accounts</p>
                   <div className="mt-3 space-y-1 text-xs text-white/80">
                     <p>admin@happytality.local</p>
@@ -2563,13 +2598,13 @@ function AuthScreen({ mode }: { mode: 'login' | 'register' }) {
               <div className="hidden sm:flex rounded-full border border-[var(--line)] bg-[var(--paper-2)] p-1">
                 <Link
                   to="/auth/login"
-                  className={`rounded-full px-3 py-2 text-xs font-semibold ${isLogin ? 'bg-black text-white' : ''}`}
+                  className={`rounded-full px-3 py-2 text-xs font-semibold ${isLogin ? 'bg-[var(--brand-blue)] text-white' : ''}`}
                 >
                   Login
                 </Link>
                 <Link
                   to="/auth/register"
-                  className={`rounded-full px-3 py-2 text-xs font-semibold ${!isLogin ? 'bg-black text-white' : ''}`}
+                  className={`rounded-full px-3 py-2 text-xs font-semibold ${!isLogin ? 'bg-[var(--brand-rust)] text-white' : ''}`}
                 >
                   Register
                 </Link>
@@ -2582,7 +2617,7 @@ function AuthScreen({ mode }: { mode: 'login' | 'register' }) {
                 setError(null)
                 setInfo('Google sign-in UI is added. Backend OAuth redirect/callback endpoint is the next step.')
               }}
-              className="mt-6 flex w-full items-center justify-center gap-2 rounded-[14px] border border-[var(--line)] bg-white px-4 py-3 text-sm font-semibold hover:bg-[var(--paper-2)]"
+              className="mt-6 flex w-full items-center justify-center gap-2 rounded-[14px] border border-[var(--line)] bg-white px-4 py-3 text-sm font-semibold hover:bg-[var(--brand-cream)]"
             >
               <GoogleMark />
               {isLogin ? 'Continue with Google' : 'Sign up with Google'}
@@ -2600,7 +2635,7 @@ function AuthScreen({ mode }: { mode: 'login' | 'register' }) {
                   value={form.name}
                   onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
                   placeholder="Full name"
-                  className="rounded-[14px] border border-[var(--line)] bg-[var(--paper-2)] px-4 py-3 text-sm outline-none focus:border-black"
+                  className="rounded-[14px] border border-[var(--line)] bg-[var(--paper-2)] px-4 py-3 text-sm outline-none focus:border-[var(--brand-blue)]"
                 />
               ) : null}
 
@@ -2609,7 +2644,7 @@ function AuthScreen({ mode }: { mode: 'login' | 'register' }) {
                 onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
                 placeholder="Email address"
                 type="email"
-                className={`rounded-[14px] border border-[var(--line)] bg-[var(--paper-2)] px-4 py-3 text-sm outline-none focus:border-black ${isLogin ? 'sm:col-span-2' : ''}`}
+                className={`rounded-[14px] border border-[var(--line)] bg-[var(--paper-2)] px-4 py-3 text-sm outline-none focus:border-[var(--brand-blue)] ${isLogin ? 'sm:col-span-2' : ''}`}
               />
 
               <input
@@ -2617,7 +2652,7 @@ function AuthScreen({ mode }: { mode: 'login' | 'register' }) {
                 value={form.password}
                 onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
                 placeholder="Password"
-                className="rounded-[14px] border border-[var(--line)] bg-[var(--paper-2)] px-4 py-3 text-sm outline-none focus:border-black"
+                className="rounded-[14px] border border-[var(--line)] bg-[var(--paper-2)] px-4 py-3 text-sm outline-none focus:border-[var(--brand-blue)]"
               />
 
               {!isLogin ? (
@@ -2626,7 +2661,7 @@ function AuthScreen({ mode }: { mode: 'login' | 'register' }) {
                   value={form.password_confirmation}
                   onChange={(e) => setForm((f) => ({ ...f, password_confirmation: e.target.value }))}
                   placeholder="Confirm password"
-                  className="rounded-[14px] border border-[var(--line)] bg-[var(--paper-2)] px-4 py-3 text-sm outline-none focus:border-black"
+                  className="rounded-[14px] border border-[var(--line)] bg-[var(--paper-2)] px-4 py-3 text-sm outline-none focus:border-[var(--brand-blue)]"
                 />
               ) : (
                 <button
@@ -2642,7 +2677,7 @@ function AuthScreen({ mode }: { mode: 'login' | 'register' }) {
                   <select
                     value={form.role}
                     onChange={(e) => setForm((f) => ({ ...f, role: e.target.value }))}
-                    className="rounded-[14px] border border-[var(--line)] bg-[var(--paper-2)] px-4 py-3 text-sm outline-none focus:border-black"
+                    className="rounded-[14px] border border-[var(--line)] bg-[var(--paper-2)] px-4 py-3 text-sm outline-none focus:border-[var(--brand-blue)]"
                   >
                     <option value="student">Student</option>
                     <option value="instructor">Instructor</option>
@@ -2658,7 +2693,7 @@ function AuthScreen({ mode }: { mode: 'login' | 'register' }) {
 
               <button
                 disabled={authBusy}
-                className="sm:col-span-2 rounded-[14px] bg-black px-4 py-3 text-sm font-semibold text-white disabled:opacity-60"
+                className={`sm:col-span-2 rounded-[14px] px-4 py-3 text-sm font-semibold text-white disabled:opacity-60 ${isLogin ? 'bg-[var(--brand-blue)] hover:bg-[var(--brand-rust)]' : 'bg-[var(--brand-rust)] hover:bg-[var(--brand-olive)]'}`}
               >
                 {authBusy ? 'Please wait...' : isLogin ? 'Login' : 'Create account'}
               </button>

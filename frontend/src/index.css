@@ -3,14 +3,19 @@
 @import "tailwindcss";
 
 :root {
+  --brand-blue: #3a6f95;
+  --brand-olive: #4d6631;
+  --brand-rust: #8b4335;
+  --brand-taupe: #7b706a;
+  --brand-cream: #efe7dc;
   --paper: #eeece8;
   --paper-2: #f5f4f1;
   --ink: #121212;
   --muted: #66635f;
   --line: #dbd6cf;
-  --brand: #2f5d7f;
+  --brand: var(--brand-blue);
   --brand-soft: #dfeaf1;
-  --accent: #f2b680;
+  --accent: #d6a37f;
   --navy: #0f1720;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -19,14 +24,14 @@
 }
 
 html[data-theme='dark'] {
-  --paper: #090c12;
-  --paper-2: #121722;
+  --paper: #080a0f;
+  --paper-2: #12151c;
   --ink: #edf0f5;
   --muted: #9ca7b8;
-  --line: #232a38;
-  --brand: #4f86c9;
-  --brand-soft: #162233;
-  --accent: #f2b680;
+  --line: #2a2f38;
+  --brand: var(--brand-blue);
+  --brand-soft: #1a2431;
+  --accent: var(--brand-rust);
   --navy: #080b11;
 }
 
@@ -47,8 +52,9 @@ body {
 
 html[data-theme='dark'] body {
   background:
-    radial-gradient(circle at 15% 2%, rgba(79, 134, 201, 0.12) 0%, transparent 30%),
-    radial-gradient(circle at 90% 8%, rgba(242, 182, 128, 0.08) 0%, transparent 28%),
+    radial-gradient(circle at 15% 2%, color-mix(in srgb, var(--brand-blue) 22%, transparent) 0%, transparent 30%),
+    radial-gradient(circle at 90% 8%, color-mix(in srgb, var(--brand-rust) 16%, transparent) 0%, transparent 28%),
+    radial-gradient(circle at 55% 20%, color-mix(in srgb, var(--brand-olive) 10%, transparent) 0%, transparent 35%),
     var(--paper);
 }
 
