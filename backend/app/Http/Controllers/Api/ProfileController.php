@@ -50,7 +50,14 @@ class ProfileController extends Controller
 
         return response()->json([
             'instructor_profile' => $profile,
-            'courses' => $request->user()->courses()->withCount('lessons')->latest()->get(),
+            'courses' => $request->user()->courses()
+                ->with([
+                    'category',
+                    'lessons' => fn ($query) => $query->orderBy('sort_order'),
+                ])
+                ->withCount('lessons')
+                ->latest()
+                ->get(),
             'orders' => $request->user()->courses()->with('orders')->get()->pluck('orders')->flatten(1)->values(),
         ]);
     }
@@ -80,4 +87,3 @@ class ProfileController extends Controller
         ]);
     }
 }
-

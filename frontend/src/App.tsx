@@ -1,13 +1,14 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react'
-import type { FormEvent, ReactNode, RefObject } from 'react'
+import type { ComponentProps, FormEvent, ReactNode, RefObject } from 'react'
 import {
   BrowserRouter,
-  Link,
-  Navigate,
-  NavLink,
+  Link as RouterLink,
+  Navigate as RouterNavigate,
+  NavLink as RouterNavLink,
   Route,
   Routes,
-  useNavigate,
+  useLocation,
+  useNavigate as useRouterNavigate,
   useParams,
   useSearchParams,
 } from 'react-router-dom'
@@ -57,6 +58,70 @@ function useApp() {
   const ctx = useContext(AppContext)
   if (!ctx) throw new Error('App context missing')
   return ctx
+}
+
+const supportedLocales: ApiLocale[] = ['en', 'ka', 'ru']
+
+function isSupportedLocale(value: string | undefined | null): value is ApiLocale {
+  return !!value && supportedLocales.includes(value as ApiLocale)
+}
+
+function localeFromPathname(pathname: string): ApiLocale | null {
+  const first = pathname.split('/').filter(Boolean)[0]
+  return isSupportedLocale(first) ? first : null
+}
+
+function withLocalePrefixPath(pathname: string, locale: ApiLocale): string {
+  const safePath = pathname.startsWith('/') ? pathname : `/${pathname}`
+  const parts = safePath.split('/').filter(Boolean)
+  if (parts.length && isSupportedLocale(parts[0])) {
+    parts[0] = locale
+    return `/${parts.join('/')}`
+  }
+  if (safePath === '/') return `/${locale}`
+  return `/${locale}${safePath}`
+}
+
+function localizeTo(to: any, locale: ApiLocale) {
+  if (typeof to === 'number') return to
+  if (typeof to === 'string') {
+    if (!to.startsWith('/')) return to
+    if (to.startsWith('//')) return to
+    return withLocalePrefixPath(to, locale)
+  }
+  if (to && typeof to === 'object' && typeof to.pathname === 'string') {
+    return { ...to, pathname: to.pathname.startsWith('/') ? withLocalePrefixPath(to.pathname, locale) : to.pathname }
+  }
+  return to
+}
+
+function Link(props: ComponentProps<typeof RouterLink>) {
+  const { locale } = useApp()
+  const location = useLocation()
+  const activeLocale = localeFromPathname(location.pathname) ?? locale
+  return <RouterLink {...props} to={localizeTo(props.to, activeLocale)} />
+}
+
+function NavLink(props: ComponentProps<typeof RouterNavLink>) {
+  const { locale } = useApp()
+  const location = useLocation()
+  const activeLocale = localeFromPathname(location.pathname) ?? locale
+  return <RouterNavLink {...props} to={localizeTo(props.to, activeLocale)} />
+}
+
+function Navigate(props: ComponentProps<typeof RouterNavigate>) {
+  const { locale } = useApp()
+  const location = useLocation()
+  const activeLocale = localeFromPathname(location.pathname) ?? locale
+  return <RouterNavigate {...props} to={localizeTo(props.to, activeLocale)} />
+}
+
+function useNavigate() {
+  const routerNavigate = useRouterNavigate()
+  const { locale } = useApp()
+  const location = useLocation()
+  const activeLocale = localeFromPathname(location.pathname) ?? locale
+  return (to: any, options?: any) => routerNavigate(localizeTo(to, activeLocale), options)
 }
 
 const dictionary: Record<ApiLocale, Record<string, string>> = {
@@ -333,6 +398,31 @@ function HeroMovingGallery({ dark = false }: { dark?: boolean }) {
   )
 }
 
+function LocaleRouteGate() {
+  const { locale, setLocale } = useApp()
+  const params = useParams()
+  const routeLocale = isSupportedLocale(params.locale) ? (params.locale as ApiLocale) : null
+
+  useEffect(() => {
+    if (routeLocale && routeLocale !== locale) {
+      setLocale(routeLocale)
+    }
+  }, [routeLocale, locale, setLocale])
+
+  if (!routeLocale) {
+    return <RouterNavigate to={`/${locale}`} replace />
+  }
+
+  return <Shell />
+}
+
+function LocalePrefixRedirect() {
+  const { locale } = useApp()
+  const location = useLocation()
+  const target = `${withLocalePrefixPath(location.pathname || '/', locale)}${location.search || ''}${location.hash || ''}`
+  return <RouterNavigate to={target} replace />
+}
+
 function AppProvider({ children }: { children: ReactNode }) {
   const [locale, setLocale] = useState<ApiLocale>(() => {
     const saved = localStorage.getItem('ht_locale') as ApiLocale | null
@@ -521,7 +611,7 @@ function AppProvider({ children }: { children: ReactNode }) {
 }
 
 function PageContainer({ children }: { children: ReactNode }) {
-  return <div className="mx-auto max-w-[1280px] px-4 pb-12 pt-5 sm:px-6 lg:px-10">{children}</div>
+  return <div className="mx-auto max-w-[90%] px-4 pb-12 pt-5 sm:px-6 lg:px-10">{children}</div>
 }
 
 function SectionLabel({ children }: { children: string }) {
@@ -533,9 +623,90 @@ function SectionLabel({ children }: { children: string }) {
   )
 }
 
+function AddToCartIconButton({
+  courseId,
+  quantity = 1,
+  onAdded,
+  stopPropagation = false,
+  className = '',
+  size = 'md',
+  title = 'Add to cart',
+}: {
+  courseId: number
+  quantity?: number
+  onAdded?: () => void
+  stopPropagation?: boolean
+  className?: string
+  size?: 'sm' | 'md' | 'lg'
+  title?: string
+}) {
+  const { addToCart, theme } = useApp()
+  const [busy, setBusy] = useState(false)
+  const [added, setAdded] = useState(false)
+  const resetTimerRef = useRef<number | null>(null)
+  const isDark = theme === 'dark'
+
+  useEffect(() => {
+    return () => {
+      if (resetTimerRef.current) window.clearTimeout(resetTimerRef.current)
+    }
+  }, [])
+
+  const sizeClass =
+    size === 'sm'
+      ? 'h-8 w-8'
+      : size === 'lg'
+        ? 'h-11 w-11'
+        : 'h-9 w-9'
+
+  return (
+    <button
+      type="button"
+      title={title}
+      aria-label={title}
+      disabled={busy}
+      onClick={(e) => {
+        if (stopPropagation) e.stopPropagation()
+        if (busy) return
+        setBusy(true)
+        void addToCart(courseId, quantity)
+          .then(() => {
+            setAdded(true)
+            onAdded?.()
+            if (resetTimerRef.current) window.clearTimeout(resetTimerRef.current)
+            resetTimerRef.current = window.setTimeout(() => setAdded(false), 2000)
+          })
+          .finally(() => setBusy(false))
+      }}
+      className={`relative inline-flex items-center justify-center rounded-full border transition-all duration-300 ${
+        added
+          ? 'scale-110 border-emerald-400/60 bg-emerald-500 text-white shadow-[0_0_0_6px_rgba(16,185,129,0.18)]'
+          : isDark
+            ? 'border-white/15 bg-white/5 text-white hover:bg-white/10'
+            : 'border-[var(--line)] bg-white text-black hover:bg-black hover:text-white'
+      } ${busy ? 'opacity-80' : ''} ${sizeClass} ${className}`}
+    >
+      {added ? (
+        <svg viewBox="0 0 20 20" className="size-4" fill="none" stroke="currentColor">
+          <path d="M4.5 10.5 8 14l7.5-8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      ) : (
+        <svg viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor">
+          <path d="M4 5h2l1.2 8.2a1 1 0 0 0 1 .8h7.9a1 1 0 0 0 1-.8L19 7H7" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+          <circle cx="10" cy="18.5" r="1.2" fill="currentColor" stroke="none" />
+          <circle cx="17" cy="18.5" r="1.2" fill="currentColor" stroke="none" />
+        </svg>
+      )}
+      {added ? <span className="pointer-events-none absolute inset-0 rounded-full animate-pulse bg-emerald-400/20" /> : null}
+    </button>
+  )
+}
+
 function Shell() {
   const { locale, setLocale, theme, setTheme, cart, user, logout } = useApp()
   const navigate = useNavigate()
+  const routerNavigate = useRouterNavigate()
+  const location = useLocation()
   const [q, setQ] = useState('')
   const browseDetailsRef = useRef<HTMLDetailsElement | null>(null)
   const profileDetailsRef = useRef<HTMLDetailsElement | null>(null)
@@ -543,6 +714,12 @@ function Shell() {
   const headerControl = isDark ? 'border border-white/15 bg-white/5 text-white' : 'border border-[var(--line)] bg-white'
   const headerGhostControl = isDark ? 'border border-white/15 bg-transparent text-white' : 'border border-[var(--line)] bg-white'
   const headerMutedText = isDark ? 'text-white/70' : 'text-[var(--muted)]'
+
+  const switchLocale = (nextLocale: ApiLocale) => {
+    setLocale(nextLocale)
+    const nextPath = withLocalePrefixPath(location.pathname || '/', nextLocale)
+    routerNavigate(`${nextPath}${location.search || ''}${location.hash || ''}`, { replace: true })
+  }
 
   useEffect(() => {
     const onPointerDown = (event: PointerEvent) => {
@@ -685,7 +862,7 @@ function Shell() {
           {!user ? (
             <select
               value={locale}
-              onChange={(e) => setLocale(e.target.value as ApiLocale)}
+              onChange={(e) => switchLocale(e.target.value as ApiLocale)}
               className={`rounded-full px-2 py-2 text-xs hidden sm:block ${headerControl}`}
             >
               <option value="en">EN</option>
@@ -810,7 +987,7 @@ function Shell() {
                       <button
                         key={code}
                         type="button"
-                        onClick={() => setLocale(code as ApiLocale)}
+                        onClick={() => switchLocale(code as ApiLocale)}
                         className={`rounded-[10px] px-2 py-2 text-xs font-semibold ${
                           locale === code
                             ? isDark
@@ -849,21 +1026,23 @@ function Shell() {
       </header>
 
       <Routes>
-        <Route path="/" element={<LandingPage />} />
-        <Route path="/instructors" element={<InstructorsPage />} />
-        <Route path="/instructors/:id" element={<InstructorDetailPage />} />
-        <Route path="/courses" element={<CoursesCatalogPage />} />
-        <Route path="/courses/:slug" element={<CourseDetailPage />} />
-        <Route path="/about" element={<AboutPage />} />
-        <Route path="/messages" element={<MessagesPage />} />
-        <Route path="/auth" element={<AuthPage />} />
-        <Route path="/auth/login" element={<LoginPage />} />
-        <Route path="/auth/register" element={<RegisterPage />} />
-        <Route path="/profile" element={<UserProfilePage />} />
-        <Route path="/instructor/dashboard" element={<InstructorDashboardPage />} />
-        <Route path="/admin" element={<AdminPage />} />
-        <Route path="/cart" element={<CartPage />} />
-        <Route path="/checkout" element={<CheckoutPage />} />
+        <Route index element={<LandingPage />} />
+        <Route path="instructors" element={<InstructorsPage />} />
+        <Route path="instructors/:id" element={<InstructorDetailPage />} />
+        <Route path="courses" element={<CoursesCatalogPage />} />
+        <Route path="courses/:slug" element={<CourseDetailPage />} />
+        <Route path="courses/:slug/learn" element={<CourseLearnPage />} />
+        <Route path="about" element={<AboutPage />} />
+        <Route path="messages" element={<MessagesPage />} />
+        <Route path="auth" element={<AuthPage />} />
+        <Route path="auth/login" element={<LoginPage />} />
+        <Route path="auth/register" element={<RegisterPage />} />
+        <Route path="profile" element={<UserProfilePage />} />
+        <Route path="instructor/dashboard" element={<InstructorDashboardPage />} />
+        <Route path="admin" element={<AdminPage />} />
+        <Route path="cart" element={<CartPage />} />
+        <Route path="checkout" element={<CheckoutPage />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </PageContainer>
   )
@@ -954,7 +1133,7 @@ function PageSection({ title, subtitle, actions }: { title: string; subtitle?: s
 }
 
 function LandingPage() {
-  const { locale, theme, addToCart } = useApp()
+  const { locale, theme } = useApp()
   const navigate = useNavigate()
   const [landing, setLanding] = useState<any>(null)
   const [courses, setCourses] = useState<ApiCourse[]>(fallbackCourses as ApiCourse[])
@@ -1014,7 +1193,7 @@ function LandingPage() {
   return (
     <>
       <section
-        className={`mt-9 grid gap-8 rounded-[28px] border p-4 sm:p-6 lg:grid-cols-[1.05fr_0.95fr] lg:items-center ${
+        className={`relative mt-9 grid gap-8 overflow-hidden rounded-[28px] border p-4 sm:p-6 lg:grid-cols-[1.05fr_0.95fr] lg:items-center ${
           isDark
             ? 'border-white/10 bg-[#090c12] shadow-[0_30px_80px_-50px_rgba(0,0,0,0.9)]'
             : 'border-transparent bg-transparent'
@@ -1066,16 +1245,33 @@ function LandingPage() {
               Join <span className={`font-semibold ${isDark ? 'text-white' : 'text-black'}`}>{Number(learnersCount).toLocaleString()}</span> learners worldwide
             </p>
           </div>
-          {videoOpen ? (
-            <div className={`mt-6 overflow-hidden rounded-[16px] border ${isDark ? 'border-white/10 bg-black' : 'border-[var(--line)] bg-black'}`}>
-              <video controls className="h-[220px] w-full object-cover sm:h-[280px]" poster={heroImages[0]}>
-                <source src="https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4" type="video/mp4" />
-              </video>
-            </div>
-          ) : null}
         </div>
 
         <HeroMovingGallery dark={isDark} />
+
+        {videoOpen ? (
+          <div className="absolute inset-0 z-20 flex items-stretch justify-center bg-black/85 p-3 sm:p-5">
+            <div className={`relative flex w-full overflow-hidden rounded-[20px] border ${isDark ? 'border-white/12 bg-black' : 'border-white/30 bg-black'}`}>
+              <video
+                controls
+                autoPlay
+                className="h-full w-full object-cover"
+                poster={heroImages[0]}
+              >
+                <source src="https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4" type="video/mp4" />
+              </video>
+              <button
+                type="button"
+                onClick={() => setVideoOpen(false)}
+                className={`absolute right-3 top-3 z-10 rounded-full border px-3 py-1.5 text-xs font-semibold backdrop-blur ${
+                  isDark ? 'border-white/20 bg-black/45 text-white' : 'border-black/10 bg-white/85 text-black'
+                }`}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        ) : null}
       </section>
 
       <section className="mt-16" id="instructors">
@@ -1206,21 +1402,7 @@ function LandingPage() {
                   <span className="text-[var(--accent)] text-[9px] tracking-[0.06em] uppercase">{course.type}</span>
                 </div>
                 <div className="mt-2 flex items-center justify-end gap-2">
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      void addToCart(course.id, 1)
-                    }}
-                    aria-label="Add to cart"
-                    className={`inline-flex h-8 w-8 items-center justify-center rounded-full ${isDark ? 'bg-[var(--brand-cream)] text-[#151515]' : 'bg-white text-black'}`}
-                  >
-                    <svg viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor">
-                      <path d="M4 5h2l1.2 8.2a1 1 0 0 0 1 .8h7.9a1 1 0 0 0 1-.8L19 7H7" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
-                      <circle cx="10" cy="18.5" r="1.2" fill="currentColor" stroke="none" />
-                      <circle cx="17" cy="18.5" r="1.2" fill="currentColor" stroke="none" />
-                    </svg>
-                  </button>
+                  <AddToCartIconButton courseId={course.id} stopPropagation className={isDark ? 'border-[var(--brand-cream)]/30 bg-[var(--brand-cream)]/90 text-[#151515]' : ''} size="sm" />
                 </div>
               </div>
             </article>
@@ -1370,7 +1552,7 @@ function InstructorsPage() {
 
 function InstructorDetailPage() {
   const { id } = useParams()
-  const { locale, addToCart } = useApp()
+  const { locale, theme } = useApp()
   const [data, setData] = useState<ApiInstructor | null>(null)
   const [loading, setLoading] = useState(true)
 
@@ -1386,40 +1568,73 @@ function InstructorDetailPage() {
 
   const instructor = data
   const courses = instructor?.courses ?? []
+  const isDark = theme === 'dark'
+  const heroSplitClass = isDark ? 'border-white/10 bg-[#0c111a]/92 text-white' : 'border-[var(--line)] bg-white text-black'
+  const cardSurfaceClass = isDark ? 'border-white/10 bg-[#0c111a]/92 text-white' : 'border-[var(--line)] bg-white text-black'
+  const softPanelClass = isDark ? 'border-white/10 bg-white/5 text-white' : 'border-[var(--line)] bg-[var(--paper-2)]'
+  const mutedText = isDark ? 'text-white/60' : 'text-[var(--muted)]'
+  const metaText = isDark ? 'text-white/55' : 'text-[#7a8596]'
+  const bodyText = isDark ? 'text-white/78' : 'text-[#333]'
+  const instructorBio = textOf(instructor?.instructor_profile?.bio, locale) || 'Professional instructor profile with courses, analytics and sales overview.'
 
   return (
     <>
       <PageSection title={instructor?.name || 'Instructor'} subtitle={instructor?.headline || 'Instructor profile and course catalog'} />
-      <section className="grid gap-6 lg:grid-cols-[0.9fr_1.1fr]">
-        <div className="overflow-hidden rounded-[18px] border border-[var(--line)] bg-white">
-          <img src={instructor?.avatar_url || heroImages[0]} alt={instructor?.name || 'Instructor'} className="h-[320px] w-full object-cover" />
-          <div className="p-4">
-            <p className="text-sm text-[var(--muted)]">{instructor?.headline}</p>
-            <p className="mt-2 text-xs text-[var(--muted)]">Status: {instructor?.instructor_profile?.status || 'new'}</p>
-            <p className="mt-1 text-xs text-[var(--muted)]">Students: {(instructor?.instructor_profile?.total_students ?? 0).toLocaleString()}</p>
-            <p className="mt-3 text-sm leading-6 text-[#333]">
-              {textOf(instructor?.instructor_profile?.bio, locale) || 'Professional instructor profile with courses, analytics and sales overview.'}
-            </p>
+      <section className="space-y-6">
+        <div className={`overflow-hidden rounded-[18px] border ${heroSplitClass}`}>
+          <div className="grid lg:grid-cols-3">
+            <div className="relative">
+              <img
+                src={instructor?.avatar_url || heroImages[0]}
+                alt={instructor?.name || 'Instructor'}
+                className="h-[280px] w-full object-cover sm:h-[340px] lg:h-full lg:min-h-[360px] max-h-[360px]"
+              />
+              <div className={`pointer-events-none absolute inset-x-0 bottom-0 h-24 ${isDark ? 'bg-gradient-to-t from-black/55 to-transparent' : 'bg-gradient-to-t from-black/20 to-transparent'}`} />
+            </div>
+            <div className="p-5 sm:p-6">
+              <p className={`text-[10px] font-semibold uppercase tracking-[0.16em] ${metaText}`}>Instructor profile</p>
+              <h2 className="mt-2 text-2xl font-extrabold sm:text-3xl">{instructor?.name || 'Instructor'}</h2>
+              <p className={`mt-2 text-sm ${metaText}`}>{instructor?.headline || 'Instructor profile'}</p>
+
+              <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                <div className={`rounded-[12px] border p-3 ${softPanelClass}`}>
+                  <p className={`text-xs ${metaText}`}>Status</p>
+                  <p className="mt-1 text-sm font-semibold capitalize">{instructor?.instructor_profile?.status || 'new'}</p>
+                </div>
+                <div className={`rounded-[12px] border p-3 ${softPanelClass}`}>
+                  <p className={`text-xs ${metaText}`}>Students</p>
+                  <p className="mt-1 text-sm font-semibold">{(instructor?.instructor_profile?.total_students ?? 0).toLocaleString()}</p>
+                </div>
+                <div className={`rounded-[12px] border p-3 ${softPanelClass}`}>
+                  <p className={`text-xs ${metaText}`}>Courses</p>
+                  <p className="mt-1 text-sm font-semibold">{(loading ? (fallbackCourses as any) : courses).length}</p>
+                </div>
+              </div>
+
+              <p className={`mt-4 text-sm leading-7 ${bodyText}`}>
+                {instructorBio}
+              </p>
+            </div>
           </div>
         </div>
 
         <div>
-          <SectionLabel>Instructor courses</SectionLabel>
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <SectionLabel>Instructor courses</SectionLabel>
+            <p className={`text-xs ${mutedText}`}>Content goes below the main cover for clearer browsing</p>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
             {(loading ? (fallbackCourses as any) : courses).map((course: any, idx: number) => (
-              <div key={course.id} className="overflow-hidden rounded-[16px] border border-[var(--line)] bg-white">
-                <img src={course.cover_image_url || heroImages[idx % heroImages.length]} alt={textOf(course.title, locale)} className="h-[180px] w-full object-cover" />
+              <div key={course.id} className={`overflow-hidden rounded-[16px] border ${cardSurfaceClass}`}>
+                <Link to={`/courses/${course.slug}`} className="block">
+                  <img src={course.cover_image_url || heroImages[idx % heroImages.length]} alt={textOf(course.title, locale)} className="h-[180px] w-full object-cover transition duration-300 hover:scale-[1.02]" />
+                </Link>
                 <div className="p-4">
-                  <h3 className="text-base font-bold">{textOf(course.title, locale)}</h3>
-                  <p className="mt-2 text-xs text-[var(--muted)]">{course.type} · {course.lessons_count ?? 0} lessons</p>
-                  <p className="mt-2 text-sm font-semibold text-black">{money(course.sale_price_amount ?? course.price_amount, course.currency || 'USD')}</p>
-                  <div className="mt-3 flex gap-2">
-                    <button onClick={() => void addToCart(course.id, 1)} className="rounded-full bg-black px-3 py-2 text-xs font-semibold text-white">
-                      {t(locale, 'addToCart')}
-                    </button>
-                    <Link to={`/courses/${course.slug}`} className="rounded-full border border-[var(--line)] px-3 py-2 text-xs font-semibold">
-                      Open
-                    </Link>
+                  <Link to={`/courses/${course.slug}`} className={`block text-base font-bold hover:underline ${isDark ? 'text-white' : 'text-black'}`}>{textOf(course.title, locale)}</Link>
+                  <p className={`mt-2 text-xs ${metaText}`}>{course.type} · {course.lessons_count ?? 0} lessons</p>
+                  <p className={`mt-2 text-sm font-semibold ${isDark ? 'text-white' : 'text-black'}`}>{money(course.sale_price_amount ?? course.price_amount, course.currency || 'USD')}</p>
+                  <div className="mt-3 flex items-center justify-end">
+                    <AddToCartIconButton courseId={course.id} size="md" />
                   </div>
                 </div>
               </div>
@@ -1433,8 +1648,7 @@ function InstructorDetailPage() {
 }
 
 function CoursesCatalogPage() {
-  const { locale, addToCart, theme } = useApp()
-  const navigate = useNavigate()
+  const { locale, theme } = useApp()
   const [params, setParams] = useSearchParams()
   const [items, setItems] = useState<ApiCourse[]>([])
   const [featuredItems, setFeaturedItems] = useState<ApiCourse[]>([])
@@ -1881,17 +2095,11 @@ function CoursesCatalogPage() {
                           <p className="text-xs text-[var(--muted)] line-through">{money(course.price_amount, course.currency || 'USD')}</p>
                         ) : null}
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          void addToCart(course.id, 1).then(() => navigate('/checkout'))
-                        }}
-                        className={`rounded-full px-3 py-2 text-[10px] font-semibold tracking-[0.14em] uppercase ${
-                          isDark ? 'bg-white text-black' : 'bg-black text-white'
-                        }`}
-                      >
-                        Enroll now
-                      </button>
+                      <AddToCartIconButton
+                        courseId={course.id}
+                        size="md"
+                        title="Enroll now"
+                      />
                     </div>
                   </div>
                 </article>
@@ -1956,7 +2164,7 @@ function CoursesCatalogPage() {
 
 function CourseDetailPage() {
   const { slug } = useParams()
-  const { locale, addToCart, theme, token } = useApp()
+  const { locale, theme, token } = useApp()
   const [course, setCourse] = useState<ApiCourse | null>(null)
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<'overview' | 'curriculum' | 'instructor' | 'reviews'>(
@@ -1964,6 +2172,7 @@ function CourseDetailPage() {
   )
   const [relatedCourses, setRelatedCourses] = useState<ApiCourse[]>([])
   const [selectedLessonId, setSelectedLessonId] = useState<number | null>(null)
+  const [heroMediaMode, setHeroMediaMode] = useState<'cover' | 'promo' | 'preview'>('cover')
   const [lessonProgressMap, setLessonProgressMap] = useState<Record<string, ApiLessonProgressItem>>({})
   const [playerStatus, setPlayerStatus] = useState<string | null>(null)
   const lessonVideoRef = useRef<HTMLVideoElement | null>(null)
@@ -1989,11 +2198,15 @@ function CourseDetailPage() {
   }, [slug])
 
   useEffect(() => {
-    const firstLessonId = course?.lessons?.[0]?.id
-    if (!selectedLessonId && firstLessonId) {
-      setSelectedLessonId(firstLessonId)
+    const firstPreviewLessonId = (course?.lessons ?? []).find((lesson: any) => !!lesson?.is_preview)?.id ?? null
+    if (!selectedLessonId && firstPreviewLessonId) {
+      setSelectedLessonId(firstPreviewLessonId)
     }
   }, [course, selectedLessonId])
+
+  useEffect(() => {
+    setHeroMediaMode('cover')
+  }, [course?.id, course?.promo_video_url])
 
   useEffect(() => {
     if (!token || !course?.id) {
@@ -2013,6 +2226,9 @@ function CourseDetailPage() {
   const price = money(course?.sale_price_amount ?? course?.price_amount, course?.currency || 'USD')
   const oldPrice = course?.sale_price_amount ? money(course.price_amount, course.currency || 'USD') : null
   const lessons = course?.lessons ?? []
+  const previewLessons = lessons.filter((lesson: any) => !!lesson?.is_preview)
+  const publicPreviewLessons = previewLessons.slice(0, 3)
+  const publicPreviewLessonIds = new Set(publicPreviewLessons.map((lesson: any) => String(lesson.id)))
   const reviews = (course?.reviews ?? []).map((review: any) => ({
     id: review.id,
     name: review.author_name || 'Student',
@@ -2073,8 +2289,11 @@ function CourseDetailPage() {
   const panelSoftClass = isDark ? 'border-white/10 bg-white/5 text-white' : 'border-[var(--line)] bg-[var(--paper-2)]'
   const mutedText = isDark ? 'text-white/60' : 'text-[var(--muted)]'
   const strongText = isDark ? 'text-white' : 'text-black'
-  const selectedLesson = lessons.find((lesson: any) => lesson.id === selectedLessonId) ?? lessons[0] ?? null
+  const selectedLesson = lessons.find((lesson: any) => lesson.id === selectedLessonId) ?? previewLessons[0] ?? null
   const selectedLessonProgress = selectedLesson ? lessonProgressMap[String(selectedLesson.id)] : null
+  const canPlaySelectedPreview = !!selectedLesson && !!selectedLesson.video_url && publicPreviewLessonIds.has(String(selectedLesson.id))
+  const showPromoInHero = heroMediaMode === 'promo' && !!course?.promo_video_url
+  const showPreviewInHero = heroMediaMode === 'preview' && canPlaySelectedPreview
 
   const persistLessonProgress = async (videoEl?: HTMLVideoElement | null) => {
     if (!token || !selectedLesson?.id) return
@@ -2179,6 +2398,49 @@ function CourseDetailPage() {
                 </span>
               ))}
             </div>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setHeroMediaMode('cover')}
+                className={`rounded-full px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.14em] ${
+                  heroMediaMode === 'cover'
+                    ? isDark ? 'bg-white text-black' : 'bg-black text-white'
+                    : isDark ? 'border border-white/12 bg-white/5 text-white' : 'border border-[var(--line)] bg-white'
+                }`}
+              >
+                Cover
+              </button>
+              {course?.promo_video_url ? (
+                <button
+                  type="button"
+                  onClick={() => setHeroMediaMode('promo')}
+                  className={`rounded-full px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.14em] ${
+                    heroMediaMode === 'promo'
+                      ? isDark ? 'bg-white text-black' : 'bg-black text-white'
+                      : isDark ? 'border border-white/12 bg-white/5 text-white' : 'border border-[var(--line)] bg-white'
+                  }`}
+                >
+                  Promo Video
+                </button>
+              ) : null}
+              {publicPreviewLessons.length ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const firstPreview = publicPreviewLessons.find((lesson: any) => lesson.video_url) ?? publicPreviewLessons[0]
+                    if (firstPreview?.id) setSelectedLessonId(firstPreview.id)
+                    setHeroMediaMode('preview')
+                  }}
+                  className={`rounded-full px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.14em] ${
+                    heroMediaMode === 'preview'
+                      ? isDark ? 'bg-white text-black' : 'bg-black text-white'
+                      : isDark ? 'border border-white/12 bg-white/5 text-white' : 'border border-[var(--line)] bg-white'
+                  }`}
+                >
+                  Preview Lessons ({publicPreviewLessons.length})
+                </button>
+              ) : null}
+            </div>
           </div>
         </div>
       </section>
@@ -2186,14 +2448,16 @@ function CourseDetailPage() {
       <section className="mt-6 grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
         <div className={`overflow-hidden rounded-[18px] border ${isDark ? 'border-white/10 bg-[#0d121a]' : 'border-[var(--line)] bg-white'}`}>
           <div className="relative h-full min-h-[320px] sm:min-h-[440px]">
-            {selectedLesson?.video_url ? (
+            {showPreviewInHero ? (
               <>
                 <video
+                  key={`preview-${selectedLesson?.id}-${selectedLesson?.video_url ?? 'no-video'}`}
                   ref={lessonVideoRef}
                   controls
                   playsInline
                   preload="metadata"
-                  poster={selectedLesson.cover_image_url || course?.cover_image_url || heroImages[0]}
+                  src={selectedLesson?.video_url ?? undefined}
+                  poster={selectedLesson?.cover_image_url || course?.cover_image_url || heroImages[0]}
                   className="h-full w-full bg-black object-cover"
                   onLoadedMetadata={(e) => {
                     const progress = selectedLessonProgress?.last_position_seconds ?? 0
@@ -2217,15 +2481,13 @@ function CourseDetailPage() {
                   onEnded={(e) => {
                     void persistLessonProgress(e.currentTarget)
                   }}
-                >
-                  <source src={selectedLesson.video_url} type="video/mp4" />
-                </video>
+                />
                 <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 via-black/35 to-transparent p-4 text-white">
                   <div className="flex flex-wrap items-end justify-between gap-3">
                     <div>
                       <p className="text-[10px] font-semibold tracking-[0.16em] uppercase text-white/70">Lesson player</p>
                       <p className="mt-1 text-sm font-semibold">
-                        {selectedLesson.sort_order}. {textOf(selectedLesson.title, locale)}
+                        Preview · {selectedLesson.sort_order}. {textOf(selectedLesson.title, locale)}
                       </p>
                       <p className="mt-1 text-xs text-white/70">
                         {selectedLesson.duration_seconds ? `${Math.round(selectedLesson.duration_seconds / 60)} min` : 'Duration not set'}
@@ -2236,24 +2498,66 @@ function CourseDetailPage() {
                   </div>
                 </div>
               </>
+            ) : showPromoInHero ? (
+              <>
+                <video
+                  key={`promo-${course?.id}-${course?.promo_video_url ?? 'no-promo'}`}
+                  controls
+                  playsInline
+                  preload="metadata"
+                  src={course?.promo_video_url ?? undefined}
+                  poster={course?.trailer_image_url || course?.cover_image_url || heroImages[0] || undefined}
+                  className="h-full w-full bg-black object-cover"
+                />
+                <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 via-black/35 to-transparent p-4 text-white">
+                  <div className="flex flex-wrap items-end justify-between gap-3">
+                    <div>
+                      <p className="text-[10px] font-semibold tracking-[0.16em] uppercase text-white/70">Course promo video</p>
+                      <p className="mt-1 text-sm font-semibold">{textOf(course?.title, locale)}</p>
+                      <p className="mt-1 text-xs text-white/70">
+                        Public trailer · Watch before enrollment
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </>
             ) : (
               <>
                 <img
-                  src={selectedLesson?.cover_image_url || course?.cover_image_url || heroImages[0]}
+                  src={course?.cover_image_url || course?.trailer_image_url || heroImages[0]}
                   alt={textOf(course?.title, locale)}
                   className="h-full w-full object-cover"
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent" />
-                <button
-                  type="button"
-                  className={`absolute left-1/2 top-1/2 grid size-14 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full shadow-xl ${isDark ? 'bg-white text-black' : 'bg-white/95'}`}
-                  onClick={() => {
-                    document.getElementById('course-promo-video')?.scrollIntoView({ behavior: 'smooth' })
-                  }}
-                  aria-label="Play course promo"
-                >
-                  <span className="ml-1 inline-block size-0 border-y-[8px] border-y-transparent border-l-[13px] border-l-black" />
-                </button>
+                {(course?.promo_video_url || publicPreviewLessons.some((lesson: any) => lesson.video_url)) ? (
+                  <button
+                    type="button"
+                    className={`absolute left-1/2 top-1/2 grid size-14 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full shadow-xl ${isDark ? 'bg-white text-black' : 'bg-white/95'}`}
+                    onClick={() => {
+                      if (course?.promo_video_url) {
+                        setHeroMediaMode('promo')
+                        return
+                      }
+                      const firstPreview = publicPreviewLessons.find((lesson: any) => lesson.video_url) ?? publicPreviewLessons[0]
+                      if (firstPreview?.id) setSelectedLessonId(firstPreview.id)
+                      setHeroMediaMode('preview')
+                    }}
+                    aria-label={course?.promo_video_url ? 'Play course promo' : 'Play preview lesson'}
+                  >
+                    <span className="ml-1 inline-block size-0 border-y-[8px] border-y-transparent border-l-[13px] border-l-black" />
+                  </button>
+                ) : null}
+                <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 via-black/35 to-transparent p-4 text-white">
+                  <p className="text-[10px] font-semibold tracking-[0.16em] uppercase text-white/70">Course cover</p>
+                  <p className="mt-1 text-sm font-semibold">{textOf(course?.title, locale)}</p>
+                  <p className="mt-1 text-xs text-white/70">
+                    {course?.promo_video_url
+                      ? 'Promo video available'
+                      : publicPreviewLessons.length
+                        ? `${publicPreviewLessons.length} preview lesson(s) available`
+                        : 'Enroll to unlock lessons'}
+                  </p>
+                </div>
               </>
             )}
           </div>
@@ -2267,13 +2571,10 @@ function CourseDetailPage() {
               <p className={`text-sm line-through ${mutedText}`}>{oldPrice}</p>
             ) : null}
 
-            <div className="mt-4 space-y-2">
-              <button
-                onClick={() => void addToCart(course!.id, 1)}
-                className={`w-full rounded-full px-4 py-3 text-xs font-semibold tracking-[0.16em] uppercase ${isDark ? 'bg-white text-black' : 'bg-black text-white'}`}
-              >
-                {t(locale, 'addToCart')}
-              </button>
+            <div className="mt-4 space-y-2 flex gap-2 justify-center items-center">
+              <div className="flex justify-center items-center">
+                <AddToCartIconButton courseId={course!.id} size="lg" title={t(locale, 'addToCart')} />
+              </div>
               <Link
                 to="/checkout"
                 className={`block w-full rounded-full border px-4 py-3 text-center text-xs font-semibold tracking-[0.16em] uppercase ${
@@ -2283,6 +2584,14 @@ function CourseDetailPage() {
                 {t(locale, 'buyNow')}
               </Link>
             </div>
+            <Link
+              to={`/courses/${course?.slug}/learn`}
+              className={`mt-2 block w-full rounded-full border px-4 py-3 text-center text-xs font-semibold tracking-[0.16em] uppercase ${
+                isDark ? 'border-white/12 bg-white/5 text-white' : 'border-[var(--line)] bg-white'
+              }`}
+            >
+              Open classroom
+            </Link>
 
             <div className={`mt-5 rounded-[14px] p-4 ${isDark ? 'border border-white/10 bg-white/5' : 'bg-[var(--paper-2)]'}`}>
               <p className="text-xs font-semibold tracking-[0.16em] uppercase">This course includes</p>
@@ -2317,25 +2626,30 @@ function CourseDetailPage() {
             </div>
           </div>
 
-          <div
-            id="course-promo-video"
-            className={`rounded-[18px] border p-5 ${panelClass}`}
-          >
-            <p className="text-sm font-semibold">Course Promo Video</p>
-            <video
-              controls
-              className="mt-3 h-[220px] w-full rounded-[12px] bg-black object-cover"
-              poster={course?.trailer_image_url || course?.cover_image_url || heroImages[1]}
+          {course?.promo_video_url && heroMediaMode !== 'promo' ? (
+            <div
+              id="course-promo-video"
+              className={`rounded-[18px] border p-5 ${panelClass}`}
             >
-              <source
-                src={
-                  course?.promo_video_url ||
-                  'https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4'
-                }
-                type="video/mp4"
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-sm font-semibold">Course Promo Video</p>
+                <button
+                  type="button"
+                  onClick={() => setHeroMediaMode('promo')}
+                  className={`rounded-full border px-3 py-1.5 text-[10px] font-semibold uppercase ${isDark ? 'border-white/12 bg-white/5 text-white' : 'border-[var(--line)] bg-white'}`}
+                >
+                  Open in hero
+                </button>
+              </div>
+              <video
+                key={`sidebar-promo-${course?.id}-${course?.promo_video_url ?? 'no-promo'}`}
+                controls
+                src={course.promo_video_url}
+                className="mt-3 h-[220px] w-full rounded-[12px] bg-black object-cover"
+                poster={course?.trailer_image_url || course?.cover_image_url || heroImages[1]}
               />
-            </video>
-          </div>
+            </div>
+          ) : null}
         </aside>
       </section>
 
@@ -2422,16 +2736,26 @@ function CourseDetailPage() {
                 </span>
                 <span>{course?.duration_minutes ?? 240} minutes total</span>
               </div>
+              <div className={`rounded-[14px] border px-4 py-3 text-sm ${isDark ? 'border-white/10 bg-white/5 text-white/80' : 'border-[var(--line)] bg-white text-[#444]'}`}>
+                Public page shows only <strong>{publicPreviewLessons.length}</strong> playable preview lesson(s). Enroll to unlock the full curriculum, then continue inside{' '}
+                <Link to={`/courses/${course?.slug}/learn`} className={isDark ? 'text-white underline' : 'text-black underline'}>
+                  Classroom
+                </Link>.
+              </div>
               {!lessons.length ? (
                 <div className={`rounded-[14px] border border-dashed p-4 text-sm ${isDark ? 'border-white/12 text-white/60' : 'border-[var(--line)] text-[var(--muted)]'}`}>
                   No lessons in this course yet. Instructors can add lessons from the dashboard Create Course tab.
                 </div>
               ) : null}
               {lessons.map((lesson: any, idx: number) => (
+                (() => {
+                  const isPublicPreview = !!lesson.is_preview && publicPreviewLessonIds.has(lesson.id)
+                  const isLockedLesson = !isPublicPreview
+                  return (
                 <details
                   key={lesson.id || lesson.sort_order || idx}
-                className={`group rounded-[14px] border px-4 py-3 ${isDark ? 'border-white/10 bg-white/5' : 'border-[var(--line)] bg-white'}`}
-                  open={idx === 0}
+                  className={`group rounded-[14px] border px-4 py-3 ${isDark ? 'border-white/10 bg-white/5' : 'border-[var(--line)] bg-white'} ${isLockedLesson ? 'opacity-95' : ''}`}
+                  open={idx === 0 && isPublicPreview}
                 >
                   <summary className="flex cursor-pointer list-none items-center justify-between gap-3">
                     <div>
@@ -2444,17 +2768,24 @@ function CourseDetailPage() {
                           ? `${Math.max(1, Math.round(lesson.duration_seconds / 60))} min`
                           : 'Approx. 10 min'}
                         {' · '}
-                        {lesson.is_preview ? 'Preview available' : 'Members only'}
+                        {isPublicPreview ? 'Preview available' : 'Members only'}
                       </p>
                     </div>
                     <div className="flex items-center gap-2">
-                      {selectedLesson?.id === lesson.id ? (
+                      {isPublicPreview && selectedLesson?.id === lesson.id && heroMediaMode === 'preview' ? (
                         <span className={`rounded-full px-2 py-1 text-[10px] font-semibold uppercase ${isDark ? 'bg-white text-black' : 'bg-black text-white'}`}>Playing</span>
+                      ) : null}
+                      {!isPublicPreview ? (
+                        <span className={`rounded-full px-2 py-1 text-[10px] font-semibold uppercase ${isDark ? 'border border-white/12 bg-white/5 text-white/80' : 'border border-[var(--line)] bg-white text-[#555]'}`}>
+                          Locked
+                        </span>
                       ) : null}
                       <span className="text-lg leading-none transition group-open:rotate-45">+</span>
                     </div>
                   </summary>
                   <div className="mt-3 border-t border-[var(--line)] pt-3">
+                    {isPublicPreview ? (
+                      <>
                     <p className={`text-sm leading-6 ${mutedText}`}>
                       {textOf(lesson.description, locale) || 'Lesson description and key learning goals.'}
                     </p>
@@ -2481,70 +2812,71 @@ function CourseDetailPage() {
                         type="button"
                         onClick={() => {
                           setSelectedLessonId(lesson.id)
+                          setHeroMediaMode('preview')
                           window.scrollTo({ top: 0, behavior: 'smooth' })
                         }}
                         className={`rounded-full px-3 py-1.5 text-[10px] font-semibold uppercase ${
                           isDark ? 'bg-white text-black' : 'bg-black text-white'
                         }`}
                       >
-                        {lesson.video_url ? 'Open in player' : lesson.is_preview ? 'Open lesson' : 'Open lesson'}
+                        {lesson.video_url ? 'Open preview' : 'Open preview'}
                       </button>
-                      {lesson.video_url ? (
-                        <a
-                          href={lesson.video_url}
-                          target="_blank"
-                          rel="noreferrer"
-                          className={`rounded-full border px-3 py-1.5 text-[10px] font-semibold uppercase ${isDark ? 'border-white/12 text-white' : 'border-[var(--line)]'}`}
-                        >
-                          Video file
-                        </a>
-                      ) : null}
                     </div>
+                      </>
+                    ) : (
+                      <p className={`text-sm leading-6 ${mutedText}`}>
+                        This lesson is part of the full curriculum. Enroll to unlock video, files, and lesson details.
+                      </p>
+                    )}
                   </div>
                 </details>
+                  )
+                })()
               ))}
             </div>
           ) : null}
 
           {activeTab === 'instructor' ? (
-            <div className="grid gap-5 lg:grid-cols-[0.9fr_1.1fr]">
-              <div className="overflow-hidden rounded-[16px] border border-[var(--line)]">
-                <img
-                  src={instructorAvatar}
-                  alt={instructorName}
-                  className="h-[280px] w-full object-cover"
-                />
+            <div className="space-y-4">
+              <div className={`overflow-hidden rounded-[16px] border ${isDark ? 'border-white/10 bg-white text-black' : 'border-[var(--line)] bg-white text-black'}`}>
+                <div className="grid lg:grid-cols-2">
+                  <img
+                    src={instructorAvatar}
+                    alt={instructorName}
+                    className="h-[260px] w-full object-cover sm:h-[320px] lg:h-full"
+                  />
+                  <div className="p-5">
+                    <p className="text-[10px] font-semibold tracking-[0.16em] uppercase text-[#7a8596]">
+                      Instructor
+                    </p>
+                    <h3 className="mt-2 text-2xl font-extrabold">{instructorName}</h3>
+                    <p className="mt-2 text-sm text-[#7a8596]">
+                      {course?.instructor?.headline || 'Expert instructor with a practical and structured teaching style.'}
+                    </p>
+                    <div className="mt-4 grid grid-cols-2 gap-3">
+                      <div className="rounded-[12px] border border-black/10 bg-black/5 p-3">
+                        <p className="text-xs text-[#7a8596]">Rating</p>
+                        <p className="text-lg font-bold">{averageRating.toFixed(1)}/5</p>
+                      </div>
+                      <div className="rounded-[12px] border border-black/10 bg-black/5 p-3">
+                        <p className="text-xs text-[#7a8596]">Students</p>
+                        <p className="text-lg font-bold">58,340+</p>
+                      </div>
+                    </div>
+                    <p className="mt-4 text-sm leading-7 text-[#333]">
+                      This instructor page section mirrors marketplace course templates: profile summary,
+                      credibility metrics, and direct access to all instructor courses.
+                    </p>
+                  </div>
+                </div>
               </div>
-              <div className={`rounded-[16px] border p-5 ${panelSoftClass}`}>
-                <p className={`text-[10px] font-semibold tracking-[0.16em] uppercase ${mutedText}`}>
-                  Instructor
-                </p>
-                <h3 className="mt-2 text-2xl font-extrabold">{instructorName}</h3>
-                <p className={`mt-2 text-sm ${mutedText}`}>
-                  {course?.instructor?.headline || 'Expert instructor with a practical and structured teaching style.'}
-                </p>
-                <div className="mt-4 grid grid-cols-2 gap-3">
-                  <div className={`rounded-[12px] p-3 ${isDark ? 'border border-white/10 bg-white/5' : 'bg-white'}`}>
-                    <p className={`text-xs ${mutedText}`}>Rating</p>
-                    <p className="text-lg font-bold">{averageRating.toFixed(1)}/5</p>
-                  </div>
-                  <div className={`rounded-[12px] p-3 ${isDark ? 'border border-white/10 bg-white/5' : 'bg-white'}`}>
-                    <p className={`text-xs ${mutedText}`}>Students</p>
-                    <p className="text-lg font-bold">58,340+</p>
-                  </div>
-                </div>
-                <p className={`mt-4 text-sm leading-7 ${isDark ? 'text-white/75' : 'text-[#333]'}`}>
-                  This instructor page section mirrors marketplace course templates: profile summary,
-                  credibility metrics, and direct access to all instructor courses.
-                </p>
-                <div className="mt-4 flex gap-2">
-                  <Link
-                    to={`/instructors/${course?.instructor?.id ?? 1}`}
-                    className={`rounded-full px-4 py-2 text-xs font-semibold uppercase tracking-[0.14em] ${isDark ? 'bg-white text-black' : 'bg-black text-white'}`}
-                  >
-                    View instructor page
-                  </Link>
-                </div>
+              <div className="flex justify-end">
+                <Link
+                  to={`/instructors/${course?.instructor?.id ?? 1}`}
+                  className={`rounded-full px-4 py-2 text-xs font-semibold uppercase tracking-[0.14em] ${isDark ? 'bg-white text-black' : 'bg-black text-white'}`}
+                >
+                  View instructor page
+                </Link>
               </div>
             </div>
           ) : null}
@@ -2687,13 +3019,7 @@ function CourseDetailPage() {
                   <span className="text-sm font-semibold">
                     {money(item.sale_price_amount ?? item.price_amount, item.currency || 'USD')}
                   </span>
-                  <button
-                    type="button"
-                    onClick={() => void addToCart(item.id, 1)}
-                    className={`rounded-full px-3 py-1.5 text-[10px] font-semibold uppercase ${isDark ? 'bg-white text-black' : 'bg-black text-white'}`}
-                  >
-                    Add
-                  </button>
+                  <AddToCartIconButton courseId={item.id} size="sm" title="Add to cart" />
                 </div>
               </div>
             </div>
@@ -2702,6 +3028,399 @@ function CourseDetailPage() {
       </section>
 
       <Footer />
+    </>
+  )
+}
+
+function CourseLearnPage() {
+  const { slug } = useParams()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const { locale, theme, token } = useApp()
+  const isDark = theme === 'dark'
+  const [course, setCourse] = useState<ApiCourse | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [selectedLessonId, setSelectedLessonId] = useState<number | null>(null)
+  const [lessonProgressMap, setLessonProgressMap] = useState<Record<string, ApiLessonProgressItem>>({})
+  const [playerStatus, setPlayerStatus] = useState<string | null>(null)
+  const [lessonNotes, setLessonNotes] = useState<Record<number, string>>({})
+  const videoRef = useRef<HTMLVideoElement | null>(null)
+  const lastSyncedPositionRef = useRef<Record<number, number>>({})
+
+  useEffect(() => {
+    if (!slug) return
+    setLoading(true)
+    api
+      .course(slug)
+      .then((res) => setCourse(res.course))
+      .catch(() => setCourse((fallbackCourses as any).find((c: any) => c.slug === slug) || (fallbackCourses as any)[0]))
+      .finally(() => setLoading(false))
+  }, [slug])
+
+  useEffect(() => {
+    if (!token || !course?.id) {
+      setLessonProgressMap({})
+      return
+    }
+    api
+      .courseLessonProgress(course.id, token)
+      .then((res) => setLessonProgressMap(res.progress || {}))
+      .catch(() => setLessonProgressMap({}))
+  }, [token, course?.id])
+
+  const lessons = (course?.lessons ?? []).slice().sort((a: any, b: any) => Number(a.sort_order || 0) - Number(b.sort_order || 0))
+  const canPlayLesson = (lesson: any) => !!lesson?.video_url && (!!token || !!lesson?.is_preview)
+  const playableLessons = lessons.filter((lesson: any) => canPlayLesson(lesson))
+
+  useEffect(() => {
+    const queryLessonId = Number(searchParams.get('lesson') || 0)
+    const queryLesson =
+      queryLessonId && lessons.find((lesson: any) => Number(lesson.id) === queryLessonId && canPlayLesson(lesson))
+        ? lessons.find((lesson: any) => Number(lesson.id) === queryLessonId)
+        : null
+
+    const next =
+      (queryLesson as any)?.id ??
+      selectedLessonId ??
+      (playableLessons[0]?.id ?? lessons.find((lesson: any) => lesson.video_url)?.id ?? lessons[0]?.id ?? null)
+
+    if (next && next !== selectedLessonId) {
+      setSelectedLessonId(Number(next))
+    }
+  }, [searchParams, lessons, playableLessons, selectedLessonId])
+
+  const panelClass = isDark ? 'border-white/10 bg-[#0c111a]/92 text-white' : 'border-[var(--line)] bg-white'
+  const panelSoftClass = isDark ? 'border-white/10 bg-white/5 text-white' : 'border-[var(--line)] bg-[var(--paper-2)]'
+  const mutedText = isDark ? 'text-white/60' : 'text-[var(--muted)]'
+  const strongText = isDark ? 'text-white' : 'text-black'
+
+  const selectedLesson =
+    lessons.find((lesson: any) => Number(lesson.id) === Number(selectedLessonId)) ??
+    playableLessons[0] ??
+    lessons[0] ??
+    null
+  const selectedIndex = selectedLesson ? lessons.findIndex((lesson: any) => Number(lesson.id) === Number(selectedLesson.id)) : -1
+  const selectedProgress = selectedLesson ? lessonProgressMap[String(selectedLesson.id)] : null
+  const completedCount = lessons.filter((lesson: any) => lessonProgressMap[String(lesson.id)]?.is_completed).length
+  const overallPercent = lessons.length ? Math.round((completedCount / lessons.length) * 100) : 0
+  const currentLessonTitle = selectedLesson ? textOf((selectedLesson as any).title, locale) : 'Lesson'
+  const canPlaySelected = !!selectedLesson && canPlayLesson(selectedLesson)
+  const noteValue = selectedLesson ? lessonNotes[selectedLesson.id] || '' : ''
+  const nextPlayableLesson =
+    selectedIndex >= 0
+      ? lessons.slice(selectedIndex + 1).find((lesson: any) => canPlayLesson(lesson)) || null
+      : null
+
+  const openLesson = (lesson: any) => {
+    if (!lesson) return
+    if (!canPlayLesson(lesson)) return
+    setSelectedLessonId(Number(lesson.id))
+    const next = new URLSearchParams(searchParams)
+    next.set('lesson', String(lesson.id))
+    setSearchParams(next)
+  }
+
+  const persistLessonProgress = async (videoEl?: HTMLVideoElement | null) => {
+    if (!token || !selectedLesson?.id) return
+    const player = videoEl ?? videoRef.current
+    if (!player) return
+    const currentSeconds = Math.max(0, Math.floor(player.currentTime || 0))
+    const lastSent = lastSyncedPositionRef.current[selectedLesson.id] ?? -1
+    if (Math.abs(currentSeconds - lastSent) < 5 && !player.ended) return
+    lastSyncedPositionRef.current[selectedLesson.id] = currentSeconds
+    try {
+      const res = await api.saveLessonProgress(
+        selectedLesson.id,
+        {
+          last_position_seconds: currentSeconds,
+          duration_seconds: Math.floor(player.duration || selectedLesson.duration_seconds || 0),
+          watched_delta_seconds: Math.max(0, currentSeconds - Math.max(0, lastSent)),
+          is_completed: player.ended,
+        },
+        token,
+      )
+      setLessonProgressMap((prev) => ({ ...prev, [String(selectedLesson.id)]: res.progress }))
+      setPlayerStatus(
+        player.ended
+          ? 'Completed'
+          : `Saved at ${Math.floor(currentSeconds / 60)}:${String(currentSeconds % 60).padStart(2, '0')}`,
+      )
+    } catch {
+      // ignore sync errors to keep playback smooth
+    }
+  }
+
+  if (!course && loading) {
+    return <div className="mt-10 text-sm text-[var(--muted)]">Loading classroom...</div>
+  }
+
+  return (
+    <>
+      <section className={`mt-10 rounded-[22px] border p-5 sm:p-6 ${panelClass}`}>
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <div className={`flex flex-wrap items-center gap-2 text-[11px] ${mutedText}`}>
+              <Link to={`/courses/${course?.slug || slug}`} className={isDark ? 'hover:text-white' : 'hover:text-black'}>
+                ← Back to course page
+              </Link>
+              <span>/</span>
+              <span className={strongText}>Classroom</span>
+            </div>
+            <h1 className="mt-3 text-3xl font-extrabold tracking-tight sm:text-4xl">{textOf(course?.title, locale)}</h1>
+            <p className={`mt-2 text-sm ${mutedText}`}>
+              Learning player layout: video on the left, playlist on the right, lesson details and files below.
+            </p>
+          </div>
+          <div className={`min-w-[220px] rounded-[14px] border px-4 py-3 ${panelSoftClass}`}>
+            <p className={`text-[10px] font-semibold tracking-[0.16em] uppercase ${mutedText}`}>Course progress</p>
+            <div className="mt-2 flex items-center justify-between gap-3">
+              <p className="text-2xl font-extrabold">{overallPercent}%</p>
+              <p className={`text-xs ${mutedText}`}>
+                {completedCount}/{lessons.length || 0} lessons completed
+              </p>
+            </div>
+            <div className={`mt-2 h-2 rounded-full ${isDark ? 'bg-white/10' : 'bg-[var(--paper-2)]'}`}>
+              <div className="h-full rounded-full bg-[var(--brand)] transition-all" style={{ width: `${overallPercent}%` }} />
+            </div>
+            {!token ? (
+              <p className={`mt-2 text-[11px] ${mutedText}`}>
+                Public mode: only preview lessons can be played. Sign in to save progress and continue where you stopped.
+              </p>
+            ) : null}
+          </div>
+        </div>
+      </section>
+
+      <section className="mt-6 grid gap-6 xl:grid-cols-[1.7fr_0.75fr]">
+        <div className="space-y-5">
+          <div className={`overflow-hidden rounded-[18px] border ${panelClass}`}>
+            <div className="relative aspect-video min-h-[260px] bg-black">
+              {selectedLesson && canPlaySelected && selectedLesson.video_url ? (
+                <video
+                  key={`learn-${selectedLesson.id}-${selectedLesson.video_url ?? 'no-src'}`}
+                  ref={videoRef}
+                  controls
+                  playsInline
+                  preload="metadata"
+                  src={selectedLesson.video_url}
+                  poster={selectedLesson.cover_image_url || course?.cover_image_url || undefined}
+                  className="h-full w-full object-cover"
+                  onLoadedMetadata={(e) => {
+                    const progress = lessonProgressMap[String(selectedLesson.id)]?.last_position_seconds ?? 0
+                    if (progress > 2 && progress < (e.currentTarget.duration || Number.MAX_SAFE_INTEGER) - 2) {
+                      try {
+                        e.currentTarget.currentTime = progress
+                        setPlayerStatus(`Resumed from ${Math.floor(progress / 60)}:${String(progress % 60).padStart(2, '0')}`)
+                      } catch {
+                        setPlayerStatus(null)
+                      }
+                    } else {
+                      setPlayerStatus(null)
+                    }
+                  }}
+                  onTimeUpdate={(e) => void persistLessonProgress(e.currentTarget)}
+                  onPause={(e) => void persistLessonProgress(e.currentTarget)}
+                  onEnded={(e) => void persistLessonProgress(e.currentTarget)}
+                />
+              ) : (
+                <>
+                  <img
+                    src={selectedLesson?.cover_image_url || course?.cover_image_url || heroImages[0]}
+                    alt={currentLessonTitle}
+                    className="h-full w-full object-cover opacity-80"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-black/30" />
+                  <div className="absolute inset-0 grid place-items-center px-6 text-center text-white">
+                    <div>
+                      <p className="text-sm font-semibold">
+                        {selectedLesson?.video_url
+                          ? 'This lesson is locked on the public classroom page'
+                          : 'No video uploaded for this lesson yet'}
+                      </p>
+                      <p className="mt-2 text-xs text-white/70">
+                        {selectedLesson?.is_preview
+                          ? 'Preview is enabled, but the lesson has no video file.'
+                          : 'Use the instructor dashboard to upload a lesson video.'}
+                      </p>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+            <div className={`border-t p-4 sm:p-5 ${isDark ? 'border-white/10' : 'border-[var(--line)]'}`}>
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className={`text-[10px] font-semibold uppercase tracking-[0.16em] ${mutedText}`}>
+                    Lesson {selectedIndex >= 0 ? selectedIndex + 1 : '-'} of {Math.max(lessons.length, 1)}
+                  </p>
+                  <h2 className="mt-1 text-xl font-bold">{currentLessonTitle}</h2>
+                  <p className={`mt-2 text-sm ${mutedText}`}>
+                    {selectedLesson?.duration_seconds
+                      ? `${Math.max(1, Math.round(selectedLesson.duration_seconds / 60))} min`
+                      : 'Duration not set'}
+                    {selectedLesson?.is_preview ? ' · Preview lesson' : ' · Full lesson'}
+                    {selectedProgress ? ` · ${selectedProgress.completed_percent}% watched` : ''}
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {playerStatus ? (
+                    <span className={`rounded-full border px-3 py-2 text-[10px] font-semibold ${isDark ? 'border-white/12 bg-white/5 text-white' : 'border-[var(--line)] bg-white'}`}>
+                      {playerStatus}
+                    </span>
+                  ) : null}
+                  {nextPlayableLesson ? (
+                    <button
+                      type="button"
+                      onClick={() => openLesson(nextPlayableLesson)}
+                      className={`rounded-full px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.14em] ${isDark ? 'bg-white text-black' : 'bg-black text-white'}`}
+                    >
+                      Next lesson
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className={`rounded-[18px] border p-5 ${panelClass}`}>
+            <h3 className="text-base font-bold">Lesson description</h3>
+            <p className={`mt-3 text-sm leading-7 ${mutedText}`}>
+              {selectedLesson ? textOf((selectedLesson as any).description, locale) || 'No lesson description provided yet.' : 'Select a lesson to view details.'}
+            </p>
+          </div>
+
+          <div className="grid gap-5 lg:grid-cols-[1fr_1fr]">
+            <div className={`rounded-[18px] border p-5 ${panelClass}`}>
+              <h3 className="text-base font-bold">Files & materials</h3>
+              {(selectedLesson?.materials ?? []).length ? (
+                <div className="mt-3 space-y-2">
+                  {(selectedLesson?.materials ?? []).map((file: any, idx: number) => (
+                    <a
+                      key={`${selectedLesson?.id}-material-${idx}`}
+                      href={file.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className={`flex items-center justify-between rounded-[12px] border px-3 py-2 text-sm ${isDark ? 'border-white/10 bg-white/5 hover:bg-white/10' : 'border-[var(--line)] bg-[var(--paper-2)] hover:bg-white'}`}
+                    >
+                      <span className="truncate pr-3">{file.name || `Material ${idx + 1}`}</span>
+                      <span className={`shrink-0 text-[10px] uppercase tracking-[0.14em] ${mutedText}`}>Open</span>
+                    </a>
+                  ))}
+                </div>
+              ) : (
+                <p className={`mt-3 text-sm ${mutedText}`}>No files attached for this lesson.</p>
+              )}
+            </div>
+
+            <div className={`rounded-[18px] border p-5 ${panelClass}`}>
+              <div className="flex items-center justify-between gap-3">
+                <h3 className="text-base font-bold">My notes</h3>
+                <span className={`text-[11px] ${mutedText}`}>Saved locally in browser (MVP)</span>
+              </div>
+              <textarea
+                value={noteValue}
+                onChange={(e) => {
+                  if (!selectedLesson?.id) return
+                  setLessonNotes((prev) => ({ ...prev, [selectedLesson.id]: e.target.value }))
+                }}
+                placeholder="Write notes while watching..."
+                className={`mt-3 h-40 w-full resize-y rounded-[12px] border px-3 py-2 text-sm outline-none ${isDark ? 'border-white/10 bg-white/5 text-white placeholder:text-white/35' : 'border-[var(--line)] bg-white placeholder:text-[#999]'}`}
+              />
+            </div>
+          </div>
+        </div>
+
+        <aside className="space-y-5 xl:sticky xl:top-24 xl:self-start">
+          <div className={`rounded-[18px] border p-4 ${panelClass}`}>
+            <div className="flex items-center gap-3">
+              <img
+                src={course?.cover_image_url || heroImages[0]}
+                alt={textOf(course?.title, locale)}
+                className="size-14 rounded-[12px] object-cover"
+              />
+              <div className="min-w-0">
+                <p className={`text-[10px] font-semibold uppercase tracking-[0.16em] ${mutedText}`}>Playlist</p>
+                <p className="line-clamp-2 text-sm font-semibold">{textOf(course?.title, locale)}</p>
+                <p className={`text-xs ${mutedText}`}>{lessons.length} lessons</p>
+              </div>
+            </div>
+
+            <div className={`mt-4 rounded-[14px] border ${isDark ? 'border-white/10 bg-white/5' : 'border-[var(--line)] bg-[var(--paper-2)]'}`}>
+              <div className={`max-h-[560px] overflow-y-auto p-2 ${isDark ? 'scrollbar-dark' : ''}`}>
+                {!lessons.length ? (
+                  <p className={`px-2 py-3 text-sm ${mutedText}`}>No lessons added yet.</p>
+                ) : (
+                  lessons.map((lesson: any, idx: number) => {
+                    const isActive = selectedLesson?.id === lesson.id
+                    const isPlayable = canPlayLesson(lesson)
+                    const progress = lessonProgressMap[String(lesson.id)]
+                    return (
+                      <button
+                        key={lesson.id || idx}
+                        type="button"
+                        onClick={() => openLesson(lesson)}
+                        disabled={!isPlayable}
+                        className={`mb-2 block w-full rounded-[12px] border p-3 text-left transition ${
+                          isActive
+                            ? isDark
+                              ? 'border-[var(--brand)]/65 bg-[var(--brand)]/12'
+                              : 'border-[var(--brand)]/40 bg-[var(--brand)]/8'
+                            : isDark
+                              ? 'border-white/8 bg-white/0 hover:border-white/15 hover:bg-white/5'
+                              : 'border-[var(--line)] bg-white hover:bg-[var(--paper)]'
+                        } ${!isPlayable ? 'cursor-not-allowed opacity-60' : ''}`}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="line-clamp-2 text-sm font-semibold">
+                              {String(idx + 1).padStart(2, '0')}. {textOf(lesson.title, locale)}
+                            </p>
+                            <p className={`mt-1 text-xs ${mutedText}`}>
+                              {lesson.duration_seconds ? `${Math.max(1, Math.round(lesson.duration_seconds / 60))} min` : 'No duration'}
+                              {' · '}
+                              {isPlayable ? 'Playable' : token ? 'No video' : lesson.is_preview ? 'Preview (no video)' : 'Locked'}
+                            </p>
+                          </div>
+                          {isActive ? (
+                            <span className={`rounded-full px-2 py-1 text-[10px] font-semibold uppercase ${isDark ? 'bg-white text-black' : 'bg-black text-white'}`}>
+                              Playing
+                            </span>
+                          ) : null}
+                        </div>
+
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          {lesson.is_preview ? (
+                            <span className="rounded-full bg-[var(--brand-olive)]/20 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-white/85">
+                              Preview
+                            </span>
+                          ) : null}
+                          {lesson.is_published ? (
+                            <span className="rounded-full bg-[var(--brand)]/20 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-white/85">
+                              Published
+                            </span>
+                          ) : (
+                            <span className={`rounded-full px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] ${isDark ? 'bg-white/8 text-white/70' : 'bg-[var(--paper-2)] text-[var(--muted)]'}`}>
+                              Draft
+                            </span>
+                          )}
+                          {progress?.is_completed ? (
+                            <span className="rounded-full bg-emerald-500/20 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-emerald-200">
+                              Done
+                            </span>
+                          ) : progress ? (
+                            <span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${isDark ? 'bg-white/8 text-white/75' : 'bg-[var(--paper-2)] text-[var(--muted)]'}`}>
+                              {progress.completed_percent}%
+                            </span>
+                          ) : null}
+                        </div>
+                      </button>
+                    )
+                  })
+                )}
+              </div>
+            </div>
+          </div>
+        </aside>
+      </section>
     </>
   )
 }
@@ -3310,6 +4029,28 @@ function UserProfilePage() {
   const mutedText = isDark ? 'text-white/60' : 'text-[var(--muted)]'
   const solidBtnClass = isDark ? 'bg-white text-black' : 'bg-black text-white'
   const outlineBtnClass = isDark ? 'border-white/12 bg-white/5 text-white' : 'border-[var(--line)]'
+  const chartText = isDark ? '#E8EDF7' : '#161616'
+  const chartGrid = isDark ? 'rgba(255,255,255,0.09)' : 'rgba(0,0,0,0.08)'
+  const chartAccent1 = 'rgba(62, 115, 156, 0.9)'
+  const chartAccent2 = 'rgba(138, 66, 48, 0.9)'
+  const chartAccent3 = 'rgba(74, 106, 46, 0.9)'
+  const ordersSorted = [...orders].sort((a: any, b: any) => Number(a.id || 0) - Number(b.id || 0))
+  const spendingTrend = ordersSorted.slice(-8).map((order: any, idx: number) => ({
+    label: `#${order.order_number || order.id || idx + 1}`,
+    value: Number(order.amount || 0),
+  }))
+  const learningProgressRows = [...orders]
+    .sort((a: any, b: any) => Number(b.progress_percent || 0) - Number(a.progress_percent || 0))
+    .slice(0, 6)
+    .map((order: any, idx: number) => ({
+      label: (textOf(order.course?.title, locale) || `Course ${idx + 1}`).slice(0, 24),
+      value: Number(order.progress_percent || 0),
+    }))
+  const studentEnrollmentSplit = {
+    active: activeOrders.length,
+    completed: completedOrders.length,
+    other: Math.max(0, orders.length - activeOrders.length - completedOrders.length),
+  }
 
   return (
     <>
@@ -3377,6 +4118,114 @@ function UserProfilePage() {
           </div>
 
           {activeTab === 'overview' ? (
+            <>
+            <div className="grid gap-5 xl:grid-cols-[1.05fr_0.95fr]">
+              <div className={`rounded-[18px] border p-5 ${cardClass}`}>
+                <div className="mb-4 flex items-center justify-between gap-3">
+                  <h2 className="text-lg font-bold">Learning progress by course</h2>
+                  <span className={`text-xs ${mutedText}`}>Live from your enrollments</span>
+                </div>
+                <div className="h-[260px]">
+                  {learningProgressRows.length ? (
+                    <Bar
+                      data={{
+                        labels: learningProgressRows.map((row) => row.label),
+                        datasets: [
+                          {
+                            label: 'Completion %',
+                            data: learningProgressRows.map((row) => row.value),
+                            backgroundColor: learningProgressRows.map((_, idx) => [chartAccent1, chartAccent2, chartAccent3][idx % 3]),
+                            borderRadius: 8,
+                          },
+                        ],
+                      }}
+                      options={{
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { labels: { color: chartText } } },
+                        scales: {
+                          x: { ticks: { color: chartText }, grid: { display: false } },
+                          y: { ticks: { color: chartText }, grid: { color: chartGrid }, suggestedMax: 100 },
+                        },
+                      }}
+                    />
+                  ) : (
+                    <div className={`grid h-full place-items-center rounded-[14px] border border-dashed text-sm ${isDark ? 'border-white/12 bg-white/5 text-white/60' : 'border-[var(--line)] bg-[var(--paper-2)] text-[var(--muted)]'}`}>
+                      Buy a course to see analytics
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="grid gap-5">
+                <div className={`rounded-[18px] border p-5 ${cardClass}`}>
+                  <div className="mb-4 flex items-center justify-between gap-3">
+                    <h2 className="text-lg font-bold">Spending trend</h2>
+                    <span className={`text-xs ${mutedText}`}>Recent purchases</span>
+                  </div>
+                  <div className="h-[220px]">
+                    {spendingTrend.length ? (
+                      <Line
+                        data={{
+                          labels: spendingTrend.map((row) => row.label),
+                          datasets: [
+                            {
+                              label: 'Amount',
+                              data: spendingTrend.map((row) => row.value),
+                              borderColor: chartAccent1,
+                              backgroundColor: 'rgba(62,115,156,0.16)',
+                              fill: true,
+                              tension: 0.35,
+                            },
+                          ],
+                        }}
+                        options={{
+                          responsive: true,
+                          maintainAspectRatio: false,
+                          plugins: { legend: { labels: { color: chartText } } },
+                          scales: {
+                            x: { ticks: { color: chartText }, grid: { color: chartGrid } },
+                            y: { ticks: { color: chartText }, grid: { color: chartGrid } },
+                          },
+                        }}
+                      />
+                    ) : (
+                      <div className={`grid h-full place-items-center rounded-[14px] border border-dashed text-sm ${isDark ? 'border-white/12 bg-white/5 text-white/60' : 'border-[var(--line)] bg-[var(--paper-2)] text-[var(--muted)]'}`}>
+                        No payments yet
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className={`rounded-[18px] border p-5 ${cardClass}`}>
+                  <div className="mb-4 flex items-center justify-between gap-3">
+                    <h2 className="text-lg font-bold">Enrollment split</h2>
+                    <span className={`text-xs ${mutedText}`}>Active / completed / other</span>
+                  </div>
+                  <div className="h-[220px]">
+                    <Doughnut
+                      data={{
+                        labels: ['Active', 'Completed', 'Other'],
+                        datasets: [
+                          {
+                            data: [studentEnrollmentSplit.active, studentEnrollmentSplit.completed, studentEnrollmentSplit.other],
+                            backgroundColor: [chartAccent1, chartAccent3, chartAccent2],
+                            borderColor: isDark ? '#0c111a' : '#ffffff',
+                            borderWidth: 2,
+                          },
+                        ],
+                      }}
+                      options={{
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { labels: { color: chartText } } },
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
             <div className="grid gap-5 xl:grid-cols-[1.1fr_0.9fr]">
               <div className={`rounded-[18px] border p-5 ${cardClass}`}>
                 <div className="flex items-center justify-between gap-3">
@@ -3435,6 +4284,7 @@ function UserProfilePage() {
                 </div>
               </div>
             </div>
+            </>
           ) : null}
 
           {activeTab === 'learning' ? (
@@ -3516,7 +4366,7 @@ function UserProfilePage() {
                       <p className="text-sm font-semibold">{textOf(course.title, locale)}</p>
                       <p className={`mt-1 text-xs ${mutedText}`}>{course.instructor?.name} · {course.type}</p>
                       <div className="mt-3 flex gap-2">
-                        <button type="button" className={`rounded-full px-3 py-2 text-xs font-semibold ${solidBtnClass}`}>Enroll now</button>
+                        <AddToCartIconButton courseId={course.id} size="sm" title="Enroll now" />
                         <button type="button" className={`rounded-full border px-3 py-2 text-xs font-semibold ${outlineBtnClass}`}>Folder</button>
                       </div>
                     </div>
@@ -3621,6 +4471,10 @@ function InstructorDashboardPage() {
   const [builderNotice, setBuilderNotice] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null)
   const [showCourseSetupForm, setShowCourseSetupForm] = useState(true)
   const [fileInputResetKey, setFileInputResetKey] = useState(0)
+  const [lessonUploadProgress, setLessonUploadProgress] = useState<number | null>(null)
+  const [dragLessonId, setDragLessonId] = useState<number | null>(null)
+  const [dragOverLessonId, setDragOverLessonId] = useState<number | null>(null)
+  const [reorderBusy, setReorderBusy] = useState(false)
   const activeTab = params.get('tab') || 'overview'
 
   const canAccess = user && ['instructor', 'admin'].includes(user.role)
@@ -3658,6 +4512,50 @@ function InstructorDashboardPage() {
   const inputClass = isDark ? 'border-white/12 bg-white/5 text-white' : 'border-[var(--line)]'
   const solidBtnClass = isDark ? 'bg-white text-black' : 'bg-black text-white'
   const outlineBtnClass = isDark ? 'border-white/12 bg-white/5 text-white' : 'border-[var(--line)]'
+  const isCreateBuilderTab = activeTab === 'create'
+  const builderToolbarClass = isDark
+    ? 'border-[var(--brand-blue)]/25 bg-[var(--brand-blue)]/8'
+    : 'border-[var(--brand-blue)]/20 bg-[var(--brand-blue)]/5'
+  const builderSelectedCourseClass = isDark
+    ? 'border-[var(--brand-blue)]/25 bg-[var(--brand-blue)]/6'
+    : 'border-[var(--brand-blue)]/18 bg-[var(--brand-blue)]/4'
+  const builderSetupClass = isDark
+    ? 'border-[var(--brand-olive)]/25 bg-[var(--brand-olive)]/7'
+    : 'border-[var(--brand-olive)]/20 bg-[var(--brand-olive)]/5'
+  const builderCurriculumClass = isDark
+    ? 'border-[var(--brand-taupe)]/25 bg-[var(--brand-taupe)]/6'
+    : 'border-[var(--brand-taupe)]/22 bg-[var(--brand-taupe)]/5'
+  const builderEditorHeaderClass = isDark
+    ? 'border-[var(--brand-rust)]/25 bg-[var(--brand-rust)]/8'
+    : 'border-[var(--brand-rust)]/18 bg-[var(--brand-rust)]/5'
+  const builderEditorFormClass = isDark
+    ? 'border-[var(--brand-blue)]/18 bg-[var(--brand-blue)]/4'
+    : 'border-[var(--brand-blue)]/12 bg-[var(--brand-blue)]/3'
+  const builderUploadsClass = isDark
+    ? 'border-[var(--brand-olive)]/22 bg-[var(--brand-olive)]/5'
+    : 'border-[var(--brand-olive)]/16 bg-[var(--brand-olive)]/4'
+  const builderActionsClass = isDark
+    ? 'border-[var(--brand-rust)]/20 bg-[var(--brand-rust)]/5'
+    : 'border-[var(--brand-rust)]/15 bg-[var(--brand-rust)]/4'
+  const builderPreviewClass = isDark
+    ? 'border-[var(--brand-taupe)]/24 bg-[var(--brand-taupe)]/5'
+    : 'border-[var(--brand-taupe)]/18 bg-[var(--brand-taupe)]/4'
+  const chartText = isDark ? '#E8EDF7' : '#161616'
+  const chartGrid = isDark ? 'rgba(255,255,255,0.09)' : 'rgba(0,0,0,0.08)'
+  const chartAccent1 = 'rgba(62, 115, 156, 0.9)'
+  const chartAccent2 = 'rgba(138, 66, 48, 0.9)'
+  const chartAccent3 = 'rgba(74, 106, 46, 0.9)'
+  const instructorCourseLabels = courses.slice(0, 8).map((course: any, idx: number) => (textOf(course.title, locale) || `Course ${idx + 1}`).slice(0, 20))
+  const instructorPriceSeries = courses.slice(0, 8).map((course: any) => Number(course.sale_price_amount ?? course.price_amount ?? 0))
+  const instructorLessonsSeries = courses.slice(0, 8).map((course: any) => Number(course.lessons_count ?? 0))
+  const instructorTypeSplit = courses.reduce(
+    (acc: Record<string, number>, course: any) => {
+      const key = String(course.type || 'other')
+      acc[key] = (acc[key] ?? 0) + 1
+      return acc
+    },
+    { online: 0, offline: 0, live: 0, recorded: 0, webinar: 0 } as Record<string, number>,
+  )
 
   const resetLessonDraft = () => {
     setLessonDraft({
@@ -3675,10 +4573,12 @@ function InstructorDashboardPage() {
     })
     setLessonFiles({ cover: null, video: null, materials: [] })
     setFileInputResetKey((k) => k + 1)
+    setLessonUploadProgress(null)
   }
 
   const builderLessons = activeBuilderCourse?.lessons ?? []
   const selectedLesson = builderLessons.find((lesson: any) => lesson.id === selectedLessonId) ?? null
+  const selectedLessonDisplayOrder = selectedLesson ? Math.max(1, builderLessons.findIndex((lesson: any) => lesson.id === selectedLesson.id) + 1) : null
 
   const beginCreateLesson = () => {
     setLessonEditorMode('create')
@@ -3732,6 +4632,7 @@ function InstructorDashboardPage() {
     if (!token || !activeCourseBuilderId) return
     const andAnother = !!opts?.andAnother
     setLessonBusy(true)
+    setLessonUploadProgress(null)
     setBuilderNotice(null)
     try {
       const fd = new FormData()
@@ -3758,9 +4659,9 @@ function InstructorDashboardPage() {
 
       let response: any
       if (lessonEditorMode === 'edit' && selectedLessonId) {
-        response = await api.updateMyLessonForm(activeCourseBuilderId, selectedLessonId, fd, token)
+        response = await api.updateMyLessonForm(activeCourseBuilderId, selectedLessonId, fd, token, setLessonUploadProgress)
       } else {
-        response = await api.createMyLessonForm(activeCourseBuilderId, fd, token)
+        response = await api.createMyLessonForm(activeCourseBuilderId, fd, token, setLessonUploadProgress)
       }
 
       const refreshed = await reloadInstructorData(activeCourseBuilderId)
@@ -3802,10 +4703,43 @@ function InstructorDashboardPage() {
     }
   }
 
+  const reorderLessonsInBuilder = async (sourceLessonId: number, targetLessonId: number) => {
+    if (!token || !activeCourseBuilderId) return
+    if (sourceLessonId === targetLessonId) return
+
+    const current = [...builderLessons]
+    const fromIndex = current.findIndex((l: any) => l.id === sourceLessonId)
+    const toIndex = current.findIndex((l: any) => l.id === targetLessonId)
+    if (fromIndex < 0 || toIndex < 0) return
+
+    const [moved] = current.splice(fromIndex, 1)
+    current.splice(toIndex, 0, moved)
+    const changed = current
+      .map((lesson: any, index: number) => ({ lesson, nextSort: index + 1 }))
+      .filter(({ lesson, nextSort }) => Number(lesson.sort_order ?? 0) !== nextSort)
+
+    if (!changed.length) return
+
+    setReorderBusy(true)
+    setBuilderNotice({ type: 'info', text: 'Reordering lessons...' })
+    try {
+      for (const item of changed) {
+        await api.updateMyLesson(activeCourseBuilderId, item.lesson.id, { sort_order: item.nextSort }, token)
+      }
+      await reloadInstructorData(activeCourseBuilderId)
+      setBuilderNotice({ type: 'success', text: 'Lesson order updated.' })
+    } catch (e: any) {
+      setBuilderNotice({ type: 'error', text: e.message || 'Failed to reorder lessons' })
+    } finally {
+      setReorderBusy(false)
+    }
+  }
+
   return (
     <>
       <PageSection title="Instructor Dashboard" subtitle="Performance, communication, course management and creation wizard." />
-      <div className="grid gap-6 xl:grid-cols-[348px_1fr]">
+      <div className={isCreateBuilderTab ? 'space-y-5' : 'grid gap-6 xl:grid-cols-[348px_1fr]'}>
+        {!isCreateBuilderTab ? (
         <aside className="space-y-4">
           <div className={`rounded-[18px] border p-4 ${cardClass}`}>
             <p className="text-xl font-bold">Instructor</p>
@@ -3851,8 +4785,10 @@ function InstructorDashboardPage() {
             </select>
           </div>
         </aside>
+        ) : null}
 
         <div className="space-y-5">
+          {!isCreateBuilderTab ? (
           <div className={`rounded-[18px] border p-5 ${cardClass}`}>
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
@@ -3872,6 +4808,7 @@ function InstructorDashboardPage() {
               </div>
             </div>
           </div>
+          ) : null}
 
           {(activeTab === 'overview' || activeTab === 'performance') ? (
             <>
@@ -3891,12 +4828,120 @@ function InstructorDashboardPage() {
                     <option>Recorded only</option>
                   </select>
                 </div>
-                <div className={`grid h-[260px] place-items-center rounded-[14px] border border-dashed text-center ${isDark ? 'border-white/12 bg-white/5' : 'border-[var(--line)] bg-[var(--paper-2)]'}`}>
-                  <div>
-                    <p className="text-base font-semibold">Chart area (MVP)</p>
-                    <p className={`mt-2 max-w-[520px] text-sm ${mutedText}`}>
-                      Prepared for revenue, enrollments, completion rate, average rating, and cohort performance charts.
-                    </p>
+                <div className="grid gap-4 xl:grid-cols-[1.05fr_0.95fr]">
+                  <div className={`rounded-[14px] border p-3 ${isDark ? 'border-white/10 bg-white/5' : 'border-[var(--line)] bg-[var(--paper-2)]'}`}>
+                    <p className="text-sm font-semibold">Course pricing / offers</p>
+                    <div className="mt-3 h-[230px]">
+                      {instructorCourseLabels.length ? (
+                        <Line
+                          data={{
+                            labels: instructorCourseLabels,
+                            datasets: [
+                              {
+                                label: 'Price',
+                                data: instructorPriceSeries,
+                                borderColor: chartAccent1,
+                                backgroundColor: 'rgba(62,115,156,0.14)',
+                                fill: true,
+                                tension: 0.35,
+                              },
+                            ],
+                          }}
+                          options={{
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: { legend: { labels: { color: chartText } } },
+                            scales: {
+                              x: { ticks: { color: chartText }, grid: { color: chartGrid } },
+                              y: { ticks: { color: chartText }, grid: { color: chartGrid } },
+                            },
+                          }}
+                        />
+                      ) : (
+                        <div className={`grid h-full place-items-center rounded-[12px] border border-dashed text-sm ${isDark ? 'border-white/12 bg-white/5 text-white/60' : 'border-[var(--line)] bg-white text-[var(--muted)]'}`}>
+                          Create a course to populate analytics
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className={`rounded-[14px] border p-3 ${isDark ? 'border-white/10 bg-white/5' : 'border-[var(--line)] bg-[var(--paper-2)]'}`}>
+                    <p className="text-sm font-semibold">Lessons per course</p>
+                    <div className="mt-3 h-[230px]">
+                      {instructorCourseLabels.length ? (
+                        <Bar
+                          data={{
+                            labels: instructorCourseLabels,
+                            datasets: [
+                              {
+                                label: 'Lessons',
+                                data: instructorLessonsSeries,
+                                backgroundColor: instructorCourseLabels.map((_: string, idx: number) => [chartAccent2, chartAccent1, chartAccent3][idx % 3]),
+                                borderRadius: 8,
+                              },
+                            ],
+                          }}
+                          options={{
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: { legend: { labels: { color: chartText } } },
+                            scales: {
+                              x: { ticks: { color: chartText }, grid: { display: false } },
+                              y: { ticks: { color: chartText }, grid: { color: chartGrid } },
+                            },
+                          }}
+                        />
+                      ) : (
+                        <div className={`grid h-full place-items-center rounded-[12px] border border-dashed text-sm ${isDark ? 'border-white/12 bg-white/5 text-white/60' : 'border-[var(--line)] bg-white text-[var(--muted)]'}`}>
+                          No lessons yet
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                <div className="mt-4 grid gap-4 lg:grid-cols-[320px_1fr]">
+                  <div className={`rounded-[14px] border p-3 ${isDark ? 'border-white/10 bg-white/5' : 'border-[var(--line)] bg-[var(--paper-2)]'}`}>
+                    <p className="text-sm font-semibold">Course type split</p>
+                    <div className="mt-3 h-[210px]">
+                      <Doughnut
+                        data={{
+                          labels: ['Online', 'Offline', 'Live', 'Recorded', 'Webinar'],
+                          datasets: [
+                            {
+                              data: [
+                                instructorTypeSplit.online ?? 0,
+                                instructorTypeSplit.offline ?? 0,
+                                instructorTypeSplit.live ?? 0,
+                                instructorTypeSplit.recorded ?? 0,
+                                instructorTypeSplit.webinar ?? 0,
+                              ],
+                              backgroundColor: [chartAccent1, chartAccent2, chartAccent3, 'rgba(92,92,92,0.9)', 'rgba(200,200,200,0.6)'],
+                              borderColor: isDark ? '#0c111a' : '#ffffff',
+                              borderWidth: 2,
+                            },
+                          ],
+                        }}
+                        options={{
+                          responsive: true,
+                          maintainAspectRatio: false,
+                          plugins: { legend: { labels: { color: chartText, boxWidth: 10 } } },
+                        }}
+                      />
+                    </div>
+                  </div>
+                  <div className={`rounded-[14px] border p-4 ${isDark ? 'border-white/10 bg-white/5' : 'border-[var(--line)] bg-[var(--paper-2)]'}`}>
+                    <p className="text-sm font-semibold">Performance notes</p>
+                    <div className={`mt-3 grid gap-2 text-sm ${mutedText}`}>
+                      <div className={`rounded-[10px] px-3 py-2 ${isDark ? 'bg-[#090d14] border border-white/10' : 'bg-white border border-[var(--line)]'}`}>
+                        Gross revenue: {money(stats.gross_revenue, 'USD')} · Sales: {stats.sales_count ?? 0}
+                      </div>
+                      <div className={`rounded-[10px] px-3 py-2 ${isDark ? 'bg-[#090d14] border border-white/10' : 'bg-white border border-[var(--line)]'}`}>
+                        Students: {(stats.students_count ?? 0).toLocaleString?.() ?? stats.students_count ?? 0} · Refunds: {stats.refunds_count ?? 0}
+                      </div>
+                      <div className={`rounded-[10px] px-3 py-2 ${isDark ? 'bg-[#090d14] border border-white/10' : 'bg-white border border-[var(--line)]'}`}>
+                        Tip: Add more lessons and publish preview lessons to improve conversion.
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -4058,7 +5103,7 @@ function InstructorDashboardPage() {
 
           {activeTab === 'create' ? (
             <div className={`rounded-[20px] border p-4 sm:p-5 ${cardClass}`}>
-              <div className={`mb-4 flex flex-wrap items-center justify-between gap-3 rounded-[14px] border px-4 py-3 ${isDark ? 'border-white/10 bg-white/5' : 'border-[var(--line)] bg-[var(--paper-2)]'}`}>
+              <div className={`mb-4 flex flex-wrap items-center justify-between gap-3 rounded-[14px] border px-4 py-3 ${builderToolbarClass}`}>
                 <div>
                   <p className={`text-[10px] font-semibold tracking-[0.18em] uppercase ${mutedText}`}>Course Builder</p>
                   <h3 className="mt-1 text-lg font-bold">Create course and build curriculum</h3>
@@ -4126,7 +5171,7 @@ function InstructorDashboardPage() {
 
               <div className="grid gap-4 xl:grid-cols-[340px_minmax(0,1fr)]">
                 <aside className="space-y-4">
-                  <div className={`rounded-[16px] border p-4 ${isDark ? 'border-white/10 bg-[#0a0f17]' : 'border-[var(--line)] bg-white'}`}>
+                  <div className={`rounded-[16px] border p-4 ${builderSelectedCourseClass}`}>
                     <label className={`mb-2 block text-[10px] font-semibold tracking-[0.16em] uppercase ${mutedText}`}>Selected course</label>
                     <select
                       value={activeCourseBuilderId ?? ''}
@@ -4144,7 +5189,7 @@ function InstructorDashboardPage() {
                       ))}
                     </select>
                     {activeBuilderCourse ? (
-                      <div className={`mt-3 rounded-[12px] border p-3 ${isDark ? 'border-white/10 bg-white/5' : 'border-[var(--line)] bg-[var(--paper-2)]'}`}>
+                      <div className={`mt-3 rounded-[12px] border p-3 ${isDark ? 'border-[var(--brand-blue)]/20 bg-[var(--brand-blue)]/8' : 'border-[var(--brand-blue)]/15 bg-[var(--brand-blue)]/6'}`}>
                         <p className="text-sm font-semibold">{textOf(activeBuilderCourse.title, locale)}</p>
                         <p className={`mt-1 text-xs ${mutedText}`}>
                           {activeBuilderCourse.status} · {activeBuilderCourse.type} · {(activeBuilderCourse.lessons?.length ?? 0)} lessons
@@ -4156,8 +5201,122 @@ function InstructorDashboardPage() {
                     )}
                   </div>
 
+                  <div className={`rounded-[16px] border p-4 ${builderCurriculumClass}`}>
+                    <div className="mb-3 flex items-center justify-between gap-2">
+                      <div>
+                        <h4 className="text-sm font-semibold">Curriculum</h4>
+                        <p className={`text-xs ${mutedText}`}>{builderLessons.length} lessons · click any lesson to edit</p>
+                      </div>
+                      <button type="button" onClick={() => beginCreateLesson()} className={`rounded-full border px-3 py-1.5 text-[10px] font-semibold uppercase ${outlineBtnClass}`}>
+                        + Add lesson
+                      </button>
+                    </div>
+
+                    <div className="max-h-[58vh] space-y-2 overflow-auto pr-1">
+                      {builderLessons.length ? (
+                        builderLessons.map((lesson: any, idx: number) => {
+                          const isActiveLesson = lesson.id === selectedLessonId
+                          const isDragSource = dragLessonId === lesson.id
+                          const isDragOver = dragOverLessonId === lesson.id && dragLessonId !== lesson.id
+                          const displayOrder = idx + 1
+                          return (
+                            <div
+                              key={lesson.id}
+                              draggable={!reorderBusy}
+                              onDragStart={() => {
+                                setDragLessonId(lesson.id)
+                                setDragOverLessonId(null)
+                              }}
+                              onDragOver={(e) => {
+                                e.preventDefault()
+                                if (dragOverLessonId !== lesson.id) setDragOverLessonId(lesson.id)
+                              }}
+                              onDrop={(e) => {
+                                e.preventDefault()
+                                if (dragLessonId && dragLessonId !== lesson.id) {
+                                  void reorderLessonsInBuilder(dragLessonId, lesson.id)
+                                }
+                                setDragLessonId(null)
+                                setDragOverLessonId(null)
+                              }}
+                              onDragEnd={() => {
+                                setDragLessonId(null)
+                                setDragOverLessonId(null)
+                              }}
+                              className={`w-full rounded-[12px] border p-3 text-left transition ${
+                                isActiveLesson
+                                  ? isDark
+                                    ? 'border-[var(--brand-blue)]/35 bg-[var(--brand-blue)]/16'
+                                    : 'border-[var(--brand-blue)]/35 bg-[var(--brand-blue)]/12 text-black'
+                                  : isDark
+                                    ? 'border-white/10 bg-white/5 hover:bg-white/10'
+                                    : 'border-[var(--line)] bg-[var(--paper-2)] hover:bg-white'
+                              } ${isDragSource ? 'opacity-60' : ''} ${isDragOver ? (isDark ? 'ring-2 ring-[var(--brand-blue)]/40' : 'ring-2 ring-[var(--brand-blue)]/30') : ''}`}
+                            >
+                              <div className="flex items-start justify-between gap-3">
+                                <button
+                                  type="button"
+                                  onClick={() => beginEditLesson(lesson)}
+                                  className="min-w-0 flex-1 text-left"
+                                >
+                                  <div className="flex items-start gap-2">
+                                    <span className={`mt-0.5 inline-flex h-6 min-w-6 items-center justify-center rounded-full text-[10px] font-semibold ${isDark ? 'border border-white/12 bg-white/5 text-white/80' : 'border border-[var(--line)] bg-white text-[#444]'}`}>
+                                      ⋮⋮
+                                    </span>
+                                    <div className="min-w-0 flex-1">
+                                      <p className="text-sm font-semibold">
+                                        {displayOrder}. {textOf(lesson.title, locale) || 'Untitled lesson'}
+                                      </p>
+                                      <p className={`mt-1 text-xs ${isActiveLesson && !isDark ? 'text-white/80' : mutedText}`}>
+                                        {Math.max(1, Math.round((lesson.duration_seconds ?? 0) / 60 || 1))} min · {(lesson.materials ?? []).length} files
+                                      </p>
+                                      <div className="mt-2 flex flex-wrap gap-1.5">
+                                        <span className={`rounded-full px-2 py-1 text-[9px] font-semibold uppercase ${lesson.is_preview ? (isDark ? 'border border-[var(--brand-olive)]/25 bg-[var(--brand-olive)]/18 text-white' : 'border border-[var(--brand-olive)]/20 bg-[var(--brand-olive)]/10 text-[#40522e]') : (isDark ? 'border border-white/10 bg-white/5 text-white/70' : 'border border-[var(--line)] bg-white text-[#666]')}`}>
+                                          {lesson.is_preview ? 'Preview' : 'Members'}
+                                        </span>
+                                        <span className={`rounded-full px-2 py-1 text-[9px] font-semibold uppercase ${lesson.is_published ? (isDark ? 'border border-[var(--brand-blue)]/25 bg-[var(--brand-blue)]/18 text-white' : 'border border-[var(--brand-blue)]/20 bg-[var(--brand-blue)]/10 text-[#28435e]') : (isDark ? 'border border-[var(--brand-rust)]/25 bg-[var(--brand-rust)]/15 text-white' : 'border border-[var(--brand-rust)]/20 bg-[var(--brand-rust)]/10 text-[#6f3f31]')}`}>
+                                          {lesson.is_published ? 'Published' : 'Draft'}
+                                        </span>
+                                        {(lesson.cover_image_url || lesson.video_url) ? (
+                                          <span className={`rounded-full px-2 py-1 text-[9px] font-semibold uppercase ${isActiveLesson ? (isDark ? 'bg-[var(--brand-blue)]/25 text-white' : 'bg-[var(--brand-blue)]/15 text-[#1f2f42]') : isDark ? 'bg-white/10 text-white/80' : 'bg-white'}`}>
+                                            Media
+                                          </span>
+                                        ) : null}
+                                      </div>
+                                    </div>
+                                  </div>
+                                </button>
+
+                                <div className="flex shrink-0 items-center gap-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => beginEditLesson(lesson)}
+                                    className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase ${outlineBtnClass}`}
+                                  >
+                                    Edit
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => void deleteLessonFromBuilder(lesson)}
+                                    className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase ${isDark ? 'border-red-400/20 bg-red-400/10 text-red-200' : 'border-red-200 bg-red-50 text-red-700'}`}
+                                  >
+                                    Delete
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          )
+                        })
+                      ) : (
+                        <div className={`rounded-[12px] border border-dashed p-4 text-sm ${isDark ? 'border-white/12 text-white/60' : 'border-[var(--line)] text-[var(--muted)]'}`}>
+                          No lessons yet. Create the first lesson to start building the course curriculum.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
                   {showCourseSetupForm ? (
-                    <div className={`rounded-[16px] border p-4 ${isDark ? 'border-white/10 bg-[#0a0f17]' : 'border-[var(--line)] bg-white'}`}>
+                    <div className={`rounded-[16px] border p-4 ${builderSetupClass}`}>
                       <div className="mb-3 flex items-center justify-between gap-2">
                         <h4 className="text-sm font-semibold">Course setup</h4>
                         <span className={`rounded-full px-2 py-1 text-[10px] uppercase ${isDark ? 'border border-white/10 bg-white/5' : 'bg-[var(--paper-2)]'}`}>
@@ -4174,8 +5333,8 @@ function InstructorDashboardPage() {
                               className={`rounded-[10px] px-3 py-2 text-[11px] font-semibold uppercase ${
                                 newCourse.type === option
                                   ? isDark
-                                    ? 'bg-white text-black'
-                                    : 'bg-black text-white'
+                                    ? 'border border-[var(--brand-olive)]/30 bg-[var(--brand-olive)]/70 text-white'
+                                    : 'border border-[var(--brand-olive)]/20 bg-[var(--brand-olive)] text-white'
                                   : isDark
                                     ? 'border border-white/10 bg-white/5 text-white'
                                     : 'bg-[var(--paper-2)]'
@@ -4242,58 +5401,6 @@ function InstructorDashboardPage() {
                       </div>
                     </div>
                   ) : null}
-
-                  <div className={`rounded-[16px] border p-4 ${isDark ? 'border-white/10 bg-[#0a0f17]' : 'border-[var(--line)] bg-white'}`}>
-                    <div className="mb-3 flex items-center justify-between gap-2">
-                      <div>
-                        <h4 className="text-sm font-semibold">Curriculum</h4>
-                        <p className={`text-xs ${mutedText}`}>{builderLessons.length} lessons</p>
-                      </div>
-                      <button type="button" onClick={() => beginCreateLesson()} className={`rounded-full border px-3 py-1.5 text-[10px] font-semibold uppercase ${outlineBtnClass}`}>
-                        + Add lesson
-                      </button>
-                    </div>
-
-                    <div className="max-h-[58vh] space-y-2 overflow-auto pr-1">
-                      {builderLessons.length ? (
-                        builderLessons.map((lesson: any) => {
-                          const isActiveLesson = lesson.id === selectedLessonId
-                          return (
-                            <button
-                              key={lesson.id}
-                              type="button"
-                              onClick={() => beginEditLesson(lesson)}
-                              className={`w-full rounded-[12px] border p-3 text-left transition ${
-                                isActiveLesson
-                                  ? isDark
-                                    ? 'border-white/25 bg-white/10'
-                                    : 'border-black bg-black text-white'
-                                  : isDark
-                                    ? 'border-white/10 bg-white/5 hover:bg-white/10'
-                                    : 'border-[var(--line)] bg-[var(--paper-2)] hover:bg-white'
-                              }`}
-                            >
-                              <div className="flex items-start justify-between gap-2">
-                                <div className="min-w-0">
-                                  <p className="text-sm font-semibold">
-                                    {lesson.sort_order}. {textOf(lesson.title, locale) || 'Untitled lesson'}
-                                  </p>
-                                  <p className={`mt-1 text-xs ${isActiveLesson && !isDark ? 'text-white/80' : mutedText}`}>
-                                    {Math.max(1, Math.round((lesson.duration_seconds ?? 0) / 60 || 1))} min · {lesson.is_preview ? 'Preview' : 'Private'} · {(lesson.materials ?? []).length} files
-                                  </p>
-                                </div>
-                                {(lesson.cover_image_url || lesson.video_url) ? <span className={`rounded-full px-2 py-1 text-[9px] font-semibold uppercase ${isActiveLesson && !isDark ? 'bg-white/20 text-white' : isDark ? 'bg-white/10 text-white/80' : 'bg-white'}`}>media</span> : null}
-                              </div>
-                            </button>
-                          )
-                        })
-                      ) : (
-                        <div className={`rounded-[12px] border border-dashed p-4 text-sm ${isDark ? 'border-white/12 text-white/60' : 'border-[var(--line)] text-[var(--muted)]'}`}>
-                          No lessons yet. Create the first lesson to start building the course curriculum.
-                        </div>
-                      )}
-                    </div>
-                  </div>
                 </aside>
 
                 <div className="space-y-4">
@@ -4304,13 +5411,13 @@ function InstructorDashboardPage() {
                     </div>
                   ) : (
                     <>
-                      <div className={`rounded-[16px] border p-4 ${isDark ? 'border-white/10 bg-[#0a0f17]' : 'border-[var(--line)] bg-white'}`}>
+                      <div className={`rounded-[16px] border p-4 ${builderEditorHeaderClass}`}>
                         <div className="flex flex-wrap items-center justify-between gap-3">
-                          <div>
-                            <p className={`text-[10px] font-semibold tracking-[0.16em] uppercase ${mutedText}`}>Lesson Editor</p>
-                            <h4 className="mt-1 text-lg font-bold">
-                              {lessonEditorMode === 'edit' ? `Edit lesson #${selectedLesson?.sort_order ?? ''}` : 'Create new lesson'}
-                            </h4>
+                              <div>
+                                <p className={`text-[10px] font-semibold tracking-[0.16em] uppercase ${mutedText}`}>Lesson Editor</p>
+                                <h4 className="mt-1 text-lg font-bold">
+                              {lessonEditorMode === 'edit' ? `Edit lesson #${selectedLessonDisplayOrder ?? ''}` : 'Create new lesson'}
+                                </h4>
                             <p className={`mt-1 text-xs ${mutedText}`}>
                               {lessonEditorMode === 'edit'
                                 ? 'Update metadata, replace files, and save changes.'
@@ -4330,7 +5437,7 @@ function InstructorDashboardPage() {
                         </div>
                       </div>
 
-                      <div className={`rounded-[16px] border p-4 ${isDark ? 'border-white/10 bg-[#0a0f17]' : 'border-[var(--line)] bg-white'}`}>
+                      <div className={`rounded-[16px] border p-4 ${builderEditorFormClass}`}>
                         <div className="grid gap-3 sm:grid-cols-2">
                           <input value={lessonDraft.title_en} onChange={(e) => setLessonDraft((f: any) => ({ ...f, title_en: e.target.value }))} placeholder="Lesson title (EN)" className={`rounded-xl border px-3 py-2 text-sm ${inputClass}`} />
                           <input value={lessonDraft.title_ru} onChange={(e) => setLessonDraft((f: any) => ({ ...f, title_ru: e.target.value }))} placeholder="Lesson title (RU)" className={`rounded-xl border px-3 py-2 text-sm ${inputClass}`} />
@@ -4364,13 +5471,13 @@ function InstructorDashboardPage() {
                         </div>
                       </div>
 
-                      <div className={`rounded-[16px] border p-4 ${isDark ? 'border-white/10 bg-[#0a0f17]' : 'border-[var(--line)] bg-white'}`}>
+                      <div className={`rounded-[16px] border p-4 ${builderUploadsClass}`}>
                         <div className="mb-3 flex items-center justify-between gap-2">
                           <h5 className="text-sm font-semibold">Uploads (cover / video / materials)</h5>
                           <span className={`text-xs ${mutedText}`}>Files are uploaded to backend storage. If media URL opens but image doesn’t display, check `php artisan storage:link`.</span>
                         </div>
                         <div className="grid gap-3 lg:grid-cols-3">
-                          <div className={`rounded-[12px] border p-3 ${isDark ? 'border-white/10 bg-white/5' : 'border-[var(--line)] bg-[var(--paper-2)]'}`}>
+                          <div className={`rounded-[12px] border p-3 ${isDark ? 'border-[var(--brand-olive)]/18 bg-[var(--brand-olive)]/7' : 'border-[var(--brand-olive)]/12 bg-[var(--brand-olive)]/5'}`}>
                             <label className={`mb-2 block text-[11px] font-semibold ${mutedText}`}>Cover image file</label>
                             <input
                               key={`cover-${fileInputResetKey}`}
@@ -4380,8 +5487,24 @@ function InstructorDashboardPage() {
                               className={`w-full rounded-xl border px-3 py-2 text-xs file:mr-2 file:rounded-full file:border-0 file:px-2.5 file:py-1 file:text-xs ${inputClass}`}
                             />
                             <p className={`mt-2 text-xs ${mutedText}`}>{lessonFiles.cover ? `Selected: ${lessonFiles.cover.name}` : selectedLesson?.cover_image_url ? 'Current cover exists' : 'No file selected'}</p>
+                            {selectedLesson?.cover_image_url ? (
+                              <div className={`mt-3 overflow-hidden rounded-[10px] border ${isDark ? 'border-white/10 bg-white/5' : 'border-[var(--line)] bg-white'}`}>
+                                <img src={selectedLesson.cover_image_url} alt="" className="h-[90px] w-full object-cover" />
+                                <div className="flex items-center justify-between gap-2 px-2 py-1.5">
+                                  <span className={`text-[10px] ${mutedText}`}>Current cover</span>
+                                  <a
+                                    href={selectedLesson.cover_image_url}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className={`rounded-full border px-2 py-1 text-[10px] font-semibold uppercase ${outlineBtnClass}`}
+                                  >
+                                    Open
+                                  </a>
+                                </div>
+                              </div>
+                            ) : null}
                           </div>
-                          <div className={`rounded-[12px] border p-3 ${isDark ? 'border-white/10 bg-white/5' : 'border-[var(--line)] bg-[var(--paper-2)]'}`}>
+                          <div className={`rounded-[12px] border p-3 ${isDark ? 'border-[var(--brand-blue)]/18 bg-[var(--brand-blue)]/7' : 'border-[var(--brand-blue)]/12 bg-[var(--brand-blue)]/5'}`}>
                             <label className={`mb-2 block text-[11px] font-semibold ${mutedText}`}>Video lesson file</label>
                             <input
                               key={`video-${fileInputResetKey}`}
@@ -4391,8 +5514,30 @@ function InstructorDashboardPage() {
                               className={`w-full rounded-xl border px-3 py-2 text-xs file:mr-2 file:rounded-full file:border-0 file:px-2.5 file:py-1 file:text-xs ${inputClass}`}
                             />
                             <p className={`mt-2 text-xs ${mutedText}`}>{lessonFiles.video ? `Selected: ${lessonFiles.video.name}` : selectedLesson?.video_url ? 'Current video exists' : 'No file selected'}</p>
+                            {selectedLesson?.video_url ? (
+                              <div className={`mt-3 overflow-hidden rounded-[10px] border ${isDark ? 'border-white/10 bg-white/5' : 'border-[var(--line)] bg-white'}`}>
+                                <video
+                                  controls
+                                  preload="metadata"
+                                  src={selectedLesson.video_url}
+                                  poster={selectedLesson.cover_image_url || undefined}
+                                  className="h-[90px] w-full bg-black object-cover"
+                                />
+                                <div className="flex items-center justify-between gap-2 px-2 py-1.5">
+                                  <span className={`text-[10px] ${mutedText}`}>Current video</span>
+                                  <a
+                                    href={selectedLesson.video_url}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className={`rounded-full border px-2 py-1 text-[10px] font-semibold uppercase ${outlineBtnClass}`}
+                                  >
+                                    Open
+                                  </a>
+                                </div>
+                              </div>
+                            ) : null}
                           </div>
-                          <div className={`rounded-[12px] border p-3 ${isDark ? 'border-white/10 bg-white/5' : 'border-[var(--line)] bg-[var(--paper-2)]'}`}>
+                          <div className={`rounded-[12px] border p-3 ${isDark ? 'border-[var(--brand-taupe)]/18 bg-[var(--brand-taupe)]/7' : 'border-[var(--brand-taupe)]/12 bg-[var(--brand-taupe)]/5'}`}>
                             <label className={`mb-2 block text-[11px] font-semibold ${mutedText}`}>Materials files</label>
                             <input
                               key={`materials-${fileInputResetKey}`}
@@ -4408,6 +5553,26 @@ function InstructorDashboardPage() {
                                   ? `${selectedLesson.materials.length} current file(s)`
                                   : 'No materials selected'}
                             </p>
+                            {selectedLesson?.materials?.length ? (
+                              <div className="mt-3 flex max-h-[110px] flex-wrap gap-2 overflow-auto pr-1">
+                                {selectedLesson.materials.slice(0, 6).map((file: any, idx: number) => (
+                                  <a
+                                    key={`builder-material-${idx}`}
+                                    href={file.url}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold ${outlineBtnClass}`}
+                                  >
+                                    {file.name || `File ${idx + 1}`}
+                                  </a>
+                                ))}
+                                {selectedLesson.materials.length > 6 ? (
+                                  <span className={`rounded-full border px-2.5 py-1 text-[10px] ${isDark ? 'border-white/10 bg-white/5 text-white/70' : 'border-[var(--line)] bg-white text-[#666]'}`}>
+                                    +{selectedLesson.materials.length - 6} more
+                                  </span>
+                                ) : null}
+                              </div>
+                            ) : null}
                           </div>
                         </div>
                         {(lessonFiles.cover || lessonFiles.video || lessonFiles.materials.length) ? (
@@ -4419,9 +5584,25 @@ function InstructorDashboardPage() {
                             {lessonFiles.materials.length ? `${lessonFiles.materials.length} material(s)` : null}
                           </div>
                         ) : null}
+                        {lessonBusy ? (
+                          <div className={`mt-3 rounded-[12px] border p-3 ${isDark ? 'border-white/10 bg-white/5' : 'border-[var(--line)] bg-[var(--paper-2)]'}`}>
+                            <div className="mb-2 flex items-center justify-between gap-3 text-xs">
+                              <span className={mutedText}>Upload progress</span>
+                              <span className="font-semibold">
+                                {lessonUploadProgress == null ? 'Preparing...' : `${lessonUploadProgress}%`}
+                              </span>
+                            </div>
+                            <div className={`h-2 w-full overflow-hidden rounded-full ${isDark ? 'bg-white/10' : 'bg-white'}`}>
+                              <div
+                                className={`h-full rounded-full transition-all ${isDark ? 'bg-[var(--brand-blue)]' : 'bg-black'}`}
+                                style={{ width: `${lessonUploadProgress ?? 8}%` }}
+                              />
+                            </div>
+                          </div>
+                        ) : null}
                       </div>
 
-                      <div className={`rounded-[16px] border p-4 ${isDark ? 'border-white/10 bg-[#0a0f17]' : 'border-[var(--line)] bg-white'}`}>
+                      <div className={`rounded-[16px] border p-4 ${builderActionsClass}`}>
                         <div className="flex flex-wrap items-center justify-between gap-3">
                           <div>
                             <h5 className="text-sm font-semibold">Actions</h5>
@@ -4450,7 +5631,7 @@ function InstructorDashboardPage() {
                       </div>
 
                       {selectedLesson ? (
-                        <div className={`rounded-[16px] border p-4 ${isDark ? 'border-white/10 bg-[#0a0f17]' : 'border-[var(--line)] bg-white'}`}>
+                        <div className={`rounded-[16px] border p-4 ${builderPreviewClass}`}>
                           <h5 className="text-sm font-semibold">Selected lesson preview</h5>
                           <div className="mt-3 grid gap-3 lg:grid-cols-[220px_1fr]">
                             <div className={`overflow-hidden rounded-[12px] border ${isDark ? 'border-white/10 bg-white/5' : 'border-[var(--line)] bg-[var(--paper-2)]'}`}>
@@ -5311,12 +6492,17 @@ function CartPage() {
 }
 
 function CheckoutPage() {
-  const { guestToken, token, user, locale } = useApp()
+  const { guestToken, token, user, locale, theme } = useApp()
   const navigate = useNavigate()
   const [preview, setPreview] = useState<any>(null)
   const [result, setResult] = useState<any>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const isDark = theme === 'dark'
+  const panelClass = isDark ? 'border-white/10 bg-[#0c111a]/92 text-white' : 'border-[var(--line)] bg-white'
+  const softPanelClass = isDark ? 'border-white/10 bg-white/5 text-white' : 'border-[var(--line)] bg-[var(--paper-2)]'
+  const mutedText = isDark ? 'text-white/60' : 'text-[var(--muted)]'
+  const solidBtnClass = isDark ? 'bg-white text-black' : 'bg-black text-white'
 
   const loadPreview = async () => {
     setError(null)
@@ -5353,43 +6539,51 @@ function CheckoutPage() {
     <>
       <PageSection title={t(locale, 'checkout')} subtitle="Cart to payment flow (Bank of Georgia gateway integration placeholder is ready for wiring)." />
       <div className="grid gap-6 lg:grid-cols-[1fr_1fr]">
-        <div className="rounded-[16px] border border-[var(--line)] bg-white p-5">
+        <div className={`rounded-[16px] border p-5 ${panelClass}`}>
           <h2 className="text-lg font-bold">Cart preview</h2>
           <div className="mt-4 space-y-3">
             {(preview?.cart?.items ?? []).map((item: any) => (
-              <div key={item.cart_item_id} className="rounded-xl border border-[var(--line)] p-3">
+              <div key={item.cart_item_id} className={`rounded-xl border p-3 ${softPanelClass}`}>
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <p className="text-sm font-semibold">{textOf(item.title, locale) || `Course #${item.course_id}`}</p>
-                    <p className="text-xs text-[var(--muted)]">Qty: {item.quantity}</p>
+                    <p className={`text-xs ${mutedText}`}>Qty: {item.quantity}</p>
                   </div>
                   <span className="text-sm font-semibold">{money(item.line_total, preview?.cart?.summary?.currency || 'USD')}</span>
                 </div>
               </div>
             ))}
-            {!preview?.cart?.items?.length ? <p className="text-sm text-[var(--muted)]">Cart is empty.</p> : null}
+            {!preview?.cart?.items?.length ? <p className={`text-sm ${mutedText}`}>Cart is empty.</p> : null}
           </div>
         </div>
 
-        <div className="rounded-[16px] border border-[var(--line)] bg-white p-5">
+        <div className={`rounded-[16px] border p-5 ${panelClass}`}>
           <h2 className="text-lg font-bold">Payment</h2>
-          <p className="mt-2 text-sm text-[var(--muted)]">Provider: Bank of Georgia (integration endpoint prepared).</p>
-          <div className="mt-4 rounded-xl bg-[var(--paper-2)] p-4 text-sm">
+          <p className={`mt-2 text-sm ${mutedText}`}>Provider: Bank of Georgia (integration endpoint prepared).</p>
+          <div className={`mt-4 rounded-xl border p-4 text-sm ${softPanelClass}`}>
             <p>Login required for order creation: {user ? 'Yes (logged in)' : 'No (please login)'}</p>
             <p className="mt-1">Total: {money(preview?.cart?.summary?.total, preview?.cart?.summary?.currency || 'USD')}</p>
           </div>
-          <button disabled={busy || !preview?.cart?.items?.length} onClick={() => void createOrder()} className="mt-5 w-full rounded-xl bg-black px-4 py-3 text-sm font-semibold text-white disabled:opacity-60">
+          <button
+            disabled={busy || !preview?.cart?.items?.length}
+            onClick={() => void createOrder()}
+            className={`mt-5 w-full rounded-xl px-4 py-3 text-sm font-semibold disabled:opacity-60 ${solidBtnClass}`}
+          >
             {busy ? 'Creating order...' : 'Create order and continue to payment'}
           </button>
           {result ? (
-            <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
+            <div className={`mt-4 rounded-xl border p-4 text-sm ${
+              isDark
+                ? 'border-emerald-400/30 bg-emerald-500/10 text-emerald-200'
+                : 'border-emerald-200 bg-emerald-50 text-emerald-800'
+            }`}>
               <p className="font-semibold">Order created</p>
               <p className="mt-1">Checkout group: {result.checkout_group}</p>
               <p className="mt-1">Gateway status: {result.payment?.status}</p>
-              <p className="mt-1 text-xs">BOG redirect URL will appear here after gateway wiring.</p>
+              <p className={`mt-1 text-xs ${isDark ? 'text-emerald-200/80' : ''}`}>BOG redirect URL will appear here after gateway wiring.</p>
             </div>
           ) : null}
-          {error ? <p className="mt-3 text-sm text-red-600">{error}</p> : null}
+          {error ? <p className={`mt-3 text-sm ${isDark ? 'text-red-300' : 'text-red-600'}`}>{error}</p> : null}
         </div>
       </div>
       <Footer />
@@ -5413,7 +6607,10 @@ function AppRoot() {
   return (
     <BrowserRouter>
       <AppProvider>
-        <Shell />
+        <Routes>
+          <Route path="/:locale/*" element={<LocaleRouteGate />} />
+          <Route path="*" element={<LocalePrefixRedirect />} />
+        </Routes>
       </AppProvider>
     </BrowserRouter>
   )

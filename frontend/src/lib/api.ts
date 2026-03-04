@@ -176,6 +176,7 @@ type RequestOptions = {
   body?: unknown
   formData?: FormData
   signal?: AbortSignal
+  onUploadProgress?: (percent: number | null) => void
 }
 
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
@@ -186,6 +187,58 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   if (options.token) headers.Authorization = `Bearer ${options.token}`
   if (options.guestToken) headers['X-Guest-Token'] = options.guestToken
   if (options.body !== undefined && !options.formData) headers['Content-Type'] = 'application/json'
+
+  if (options.formData && options.onUploadProgress) {
+    return new Promise<T>((resolve, reject) => {
+      const xhr = new XMLHttpRequest()
+      xhr.open(options.method ?? 'POST', `${API_BASE}${path}`)
+      Object.entries(headers).forEach(([key, value]) => xhr.setRequestHeader(key, value))
+      xhr.responseType = 'text'
+
+      if (xhr.upload) {
+        xhr.upload.onprogress = (event) => {
+          if (!event.lengthComputable) {
+            options.onUploadProgress?.(null)
+            return
+          }
+          options.onUploadProgress?.(Math.max(0, Math.min(100, Math.round((event.loaded / event.total) * 100))))
+        }
+      }
+
+      xhr.onload = () => {
+        const text = xhr.responseText || ''
+        let data: any = null
+        try {
+          data = text ? JSON.parse(text) : null
+        } catch {
+          data = text
+        }
+
+        if (xhr.status < 200 || xhr.status >= 300) {
+          const validationError =
+            data?.errors && typeof data.errors === 'object'
+              ? Object.values(data.errors).flat().find((v) => typeof v === 'string')
+              : null
+          const message = validationError || data?.message || data?.error || `HTTP ${xhr.status}`
+          reject(new Error(message))
+          return
+        }
+
+        options.onUploadProgress?.(100)
+        resolve(data as T)
+      }
+
+      xhr.onerror = () => reject(new Error('Network error'))
+      if (options.signal) {
+        options.signal.addEventListener('abort', () => {
+          xhr.abort()
+          reject(new DOMException('Aborted', 'AbortError'))
+        })
+      }
+
+      xhr.send(options.formData)
+    })
+  }
 
   const res = await fetch(`${API_BASE}${path}`, {
     method: options.method ?? 'GET',
@@ -253,11 +306,17 @@ export const api = {
     request<any>(`/me/instructor/courses/${id}`, { method: 'PUT', token, body: payload }),
   createMyLesson: (courseId: number, payload: any, token: string) =>
     request<any>(`/me/instructor/courses/${courseId}/lessons`, { method: 'POST', token, body: payload }),
-  createMyLessonForm: (courseId: number, formData: FormData, token: string) =>
-    request<any>(`/me/instructor/courses/${courseId}/lessons`, { method: 'POST', token, formData }),
-  updateMyLessonForm: (courseId: number, lessonId: number, formData: FormData, token: string) => {
+  createMyLessonForm: (courseId: number, formData: FormData, token: string, onUploadProgress?: (percent: number | null) => void) =>
+    request<any>(`/me/instructor/courses/${courseId}/lessons`, { method: 'POST', token, formData, onUploadProgress }),
+  updateMyLessonForm: (
+    courseId: number,
+    lessonId: number,
+    formData: FormData,
+    token: string,
+    onUploadProgress?: (percent: number | null) => void,
+  ) => {
     formData.append('_method', 'PUT')
-    return request<any>(`/me/instructor/courses/${courseId}/lessons/${lessonId}`, { method: 'POST', token, formData })
+    return request<any>(`/me/instructor/courses/${courseId}/lessons/${lessonId}`, { method: 'POST', token, formData, onUploadProgress })
   },
   updateMyLesson: (courseId: number, lessonId: number, payload: any, token: string) =>
     request<any>(`/me/instructor/courses/${courseId}/lessons/${lessonId}`, { method: 'PUT', token, body: payload }),

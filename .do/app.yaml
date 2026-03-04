@@ -1,0 +1,30 @@
+# App Platform spec для монопоя happytality
+# Замените YOUR_GITLAB_USER/happytality на ваш реальный путь (owner/repo в GitLab)
+
+name: happytality
+
+services:
+  - name: api
+    source_dir: backend
+    environment_slug: php
+    gitlab:
+      repo: YOUR_GITLAB_USER/happytality
+      branch: main
+      deploy_on_push: true
+    routes:
+      - path: /
+    # Добавьте Database в DO консоли и подключите env vars (DB_*, APP_KEY, FRONTEND_URL, etc.)
+
+static_sites:
+  - name: frontend
+    source_dir: frontend
+    environment_slug: node-js
+    build_command: npm ci && npm run build
+    output_dir: dist
+    gitlab:
+      repo: YOUR_GITLAB_USER/happytality
+      branch: main
+      deploy_on_push: true
+    routes:
+      - path: /
+    # Добавьте VITE_API_BASE_URL как build-time env (URL вашего api сервиса)
