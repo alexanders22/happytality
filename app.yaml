@@ -1,0 +1,25 @@
+name: happytality
+
+services:
+  - name: api
+    source_dir: backend
+    environment_slug: php
+    gitlab:
+      repo: alexander_upda/happytallity
+      branch: codex/mvp-foundation
+      deploy_on_push: true
+    routes:
+      - path: /api
+
+static_sites:
+  - name: frontend
+    source_dir: frontend
+    environment_slug: node-js
+    build_command: npm ci && npm run build
+    output_dir: dist
+    gitlab:
+      repo: alexander_upda/happytallity
+      branch: codex/mvp-foundation
+      deploy_on_push: true
+    routes:
+      - path: /
