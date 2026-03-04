@@ -1,5 +1,4 @@
 # App Platform spec для монопоя happytality
-# Замените YOUR_GITLAB_USER/happytality на ваш реальный путь (owner/repo в GitLab)
 
 name: happytality
 
@@ -8,8 +7,8 @@ services:
     source_dir: backend
     environment_slug: php
     gitlab:
-      repo: YOUR_GITLAB_USER/happytality
-      branch: main
+      repo: alexander_upda/happytallity
+      branch: codex/mvp-foundation
       deploy_on_push: true
     routes:
       - path: /
@@ -22,8 +21,8 @@ static_sites:
     build_command: npm ci && npm run build
     output_dir: dist
     gitlab:
-      repo: YOUR_GITLAB_USER/happytality
-      branch: main
+      repo: alexander_upda/happytallity
+      branch: codex/mvp-foundation
       deploy_on_push: true
     routes:
       - path: /
