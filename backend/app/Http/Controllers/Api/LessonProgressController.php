@@ -94,6 +94,25 @@ class LessonProgressController extends Controller
         ]);
     }
 
+    public function access(Request $request, Course $course): JsonResponse
+    {
+        $user = $request->user();
+        abort_unless($user, 401);
+
+        $isStaff = $user->role === 'admin' || $course->instructor_user_id === $user->id;
+        $enrolled = $isStaff || CourseOrder::query()
+            ->where('user_id', $user->id)
+            ->where('course_id', $course->id)
+            ->whereIn('payment_status', ['paid', 'captured'])
+            ->exists();
+
+        return response()->json([
+            'enrolled' => $enrolled,
+            'can_learn' => $enrolled,
+            'reason' => $enrolled ? null : 'Purchase this course to unlock all lessons.',
+        ]);
+    }
+
     private function authorizeCourseAccess(int $userId, Course $course): void
     {
         $user = request()->user();
@@ -144,4 +163,3 @@ class LessonProgressController extends Controller
         ]);
     }
 }
-

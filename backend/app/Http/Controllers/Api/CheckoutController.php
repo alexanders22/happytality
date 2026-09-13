@@ -52,14 +52,16 @@ class CheckoutController extends Controller
                 'order_number' => 'HT-'.Str::upper(Str::random(10)),
                 'amount' => $price * $item->quantity,
                 'currency' => $course?->currency ?? 'USD',
-                'payment_status' => 'pending',
-                'enrollment_status' => 'pending_payment',
+                // Local/MVP: mark paid immediately so learning unlocks without a real BOG callback.
+                'payment_status' => app()->environment('local') ? 'paid' : 'pending',
+                'enrollment_status' => app()->environment('local') ? 'active' : 'pending_payment',
                 'progress_percent' => 0,
+                'purchased_at' => app()->environment('local') ? now() : null,
                 'meta' => [
                     'checkout_group' => $checkoutGroup,
                     'quantity' => $item->quantity,
                     'gateway' => 'bank_of_georgia',
-                    'gateway_status' => 'not_started',
+                    'gateway_status' => app()->environment('local') ? 'local_auto_captured' : 'not_started',
                 ],
             ]);
         }

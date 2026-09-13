@@ -6,19 +6,13 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-class CourseLesson extends Model
+class CourseModule extends Model
 {
     protected $fillable = [
         'course_id',
-        'course_module_id',
         'sort_order',
         'title',
         'description',
-        'cover_image_url',
-        'video_url',
-        'materials',
-        'duration_seconds',
-        'is_preview',
         'is_published',
     ];
 
@@ -27,8 +21,6 @@ class CourseLesson extends Model
         return [
             'title' => 'array',
             'description' => 'array',
-            'materials' => 'array',
-            'is_preview' => 'boolean',
             'is_published' => 'boolean',
         ];
     }
@@ -38,13 +30,8 @@ class CourseLesson extends Model
         return $this->belongsTo(Course::class);
     }
 
-    public function module(): BelongsTo
+    public function lessons(): HasMany
     {
-        return $this->belongsTo(CourseModule::class, 'course_module_id');
-    }
-
-    public function progresses(): HasMany
-    {
-        return $this->hasMany(CourseLessonProgress::class);
+        return $this->hasMany(CourseLesson::class)->orderBy('sort_order');
     }
 }
