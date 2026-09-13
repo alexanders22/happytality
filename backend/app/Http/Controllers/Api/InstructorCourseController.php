@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Course;
 use App\Models\CourseLesson;
+use App\Models\CourseModule;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -19,7 +20,7 @@ class InstructorCourseController extends Controller
 
         return response()->json([
             'data' => $user->courses()
-                ->with(['category', 'lessons'])
+                ->with(['category', 'modules.lessons', 'lessons'])
                 ->withCount('orders')
                 ->latest()
                 ->get(),
@@ -59,7 +60,7 @@ class InstructorCourseController extends Controller
 
         return response()->json([
             'message' => 'Course updated',
-            'course' => $course->fresh()->load(['category', 'lessons']),
+            'course' => $course->fresh()->load(['category', 'modules.lessons', 'lessons']),
         ]);
     }
 
@@ -71,6 +72,65 @@ class InstructorCourseController extends Controller
 
         return response()->json([
             'message' => 'Course deleted',
+        ]);
+    }
+
+    public function storeModule(Request $request, Course $course): JsonResponse
+    {
+        $user = $this->requireInstructor($request);
+        $this->assertOwnerOrAdmin($user, $course);
+
+        $validated = $request->validate([
+            'title' => ['required', 'array'],
+            'description' => ['nullable', 'array'],
+            'sort_order' => ['nullable', 'integer', 'min:1'],
+            'is_published' => ['nullable', 'boolean'],
+        ]);
+
+        $module = $course->modules()->create([
+            ...$validated,
+            'sort_order' => $validated['sort_order'] ?? (($course->modules()->max('sort_order') ?? 0) + 1),
+            'is_published' => $validated['is_published'] ?? true,
+        ]);
+
+        return response()->json([
+            'message' => 'Module created',
+            'module' => $module->load('lessons'),
+        ], 201);
+    }
+
+    public function updateModule(Request $request, Course $course, CourseModule $module): JsonResponse
+    {
+        $user = $this->requireInstructor($request);
+        $this->assertOwnerOrAdmin($user, $course);
+        abort_unless($module->course_id === $course->id, 404);
+
+        $validated = $request->validate([
+            'title' => ['sometimes', 'array'],
+            'description' => ['nullable', 'array'],
+            'sort_order' => ['nullable', 'integer', 'min:1'],
+            'is_published' => ['nullable', 'boolean'],
+        ]);
+
+        $module->update($validated);
+
+        return response()->json([
+            'message' => 'Module updated',
+            'module' => $module->fresh()->load('lessons'),
+        ]);
+    }
+
+    public function destroyModule(Request $request, Course $course, CourseModule $module): JsonResponse
+    {
+        $user = $this->requireInstructor($request);
+        $this->assertOwnerOrAdmin($user, $course);
+        abort_unless($module->course_id === $course->id, 404);
+
+        $module->lessons()->update(['course_module_id' => null]);
+        $module->delete();
+
+        return response()->json([
+            'message' => 'Module deleted',
         ]);
     }
 
@@ -95,7 +155,7 @@ class InstructorCourseController extends Controller
         return response()->json([
             'message' => 'Lesson created',
             'lesson' => $lesson,
-            'course' => $course->fresh()->load('lessons'),
+            'course' => $course->fresh()->load(['modules.lessons', 'lessons']),
         ], 201);
     }
 
@@ -135,7 +195,7 @@ class InstructorCourseController extends Controller
     {
         return $request->validate([
             'category_id' => ['nullable', 'integer', 'exists:categories,id'],
-            'type' => ['sometimes', Rule::in(['online', 'offline'])],
+            'type' => ['sometimes', Rule::in(['online', 'offline', 'recorded', 'live', 'webinar', 'retreat', 'workshop'])],
             'slug' => [$isUpdate ? 'sometimes' : 'nullable', 'string', 'max:255'],
             'title' => [$isUpdate ? 'sometimes' : 'required', 'array'],
             'short_description' => ['nullable', 'array'],
@@ -159,11 +219,12 @@ class InstructorCourseController extends Controller
     private function validateLesson(Request $request, bool $isUpdate = false): array
     {
         $rules = [
+            'course_module_id' => ['nullable', 'integer', 'exists:course_modules,id'],
             'sort_order' => [$isUpdate ? 'sometimes' : 'nullable', 'integer', 'min:1'],
             'title' => [$isUpdate ? 'sometimes' : 'required', 'array'],
             'description' => ['nullable', 'array'],
             'cover_image_url' => ['nullable', 'url', 'max:1000'],
-            'video_url' => ['nullable', 'url', 'max:1000'],
+            'video_url' => ['nullable', 'url', 'max:2000'],
             'materials' => ['nullable', 'array'],
             'duration_seconds' => [$isUpdate ? 'sometimes' : 'nullable', 'integer', 'min:0'],
             'is_preview' => [$isUpdate ? 'sometimes' : 'nullable', 'boolean'],
@@ -174,7 +235,24 @@ class InstructorCourseController extends Controller
             'materials_files.*' => ['file', 'max:51200'],
         ];
 
-        return $request->validate($rules);
+        $validated = $request->validate($rules);
+
+        if (! empty($validated['course_module_id'])) {
+            $belongs = CourseModule::query()
+                ->where('id', $validated['course_module_id'])
+                ->where('course_id', $request->route('course')?->id ?? $request->route('course'))
+                ->exists();
+            // route model binding provides Course $course in callers; enforce via request attribute when present
+            if ($request->route('course') instanceof Course) {
+                $belongs = CourseModule::query()
+                    ->where('id', $validated['course_module_id'])
+                    ->where('course_id', $request->route('course')->id)
+                    ->exists();
+            }
+            abort_unless($belongs, 422, 'Module does not belong to this course.');
+        }
+
+        return $validated;
     }
 
     private function persistLessonUploads(Request $request, array $validated, Course $course, ?CourseLesson $lesson = null): array

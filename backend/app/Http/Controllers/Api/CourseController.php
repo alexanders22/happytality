@@ -30,7 +30,7 @@ class CourseController extends Controller
         if ($request->filled('status')) {
             $query->where('status', (string) $request->string('status'));
         } else {
-            $query->whereIn('status', ['published', 'draft']);
+            $query->where('status', 'published');
         }
 
         if ($request->filled('type')) {
@@ -77,6 +77,7 @@ class CourseController extends Controller
             'instructor:id,name,email,avatar_url,headline',
             'instructor.instructorProfile',
             'category',
+            'modules.lessons',
             'lessons',
             'faqs' => fn ($q) => $q->where('is_active', true)->orderBy('sort_order'),
             'reviews' => fn ($q) => $q->where('status', 'approved')->latest()->limit(20),

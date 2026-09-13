@@ -47,6 +47,7 @@ Route::prefix('v1')->group(function (): void {
         Route::post('/courses/{course:slug}/reviews', [CourseController::class, 'storeReview']);
         Route::get('/me/courses/{course}/lesson-progress', [LessonProgressController::class, 'byCourse']);
         Route::put('/me/lessons/{lesson}/progress', [LessonProgressController::class, 'upsert']);
+        Route::get('/me/courses/{course}/access', [LessonProgressController::class, 'access']);
         Route::post('/checkout/create', [CheckoutController::class, 'create']);
         Route::get('/me/profile', [ProfileController::class, 'user']);
         Route::put('/me/profile', [ProfileController::class, 'updateUser']);
@@ -56,6 +57,9 @@ Route::prefix('v1')->group(function (): void {
         Route::post('/me/instructor/courses', [InstructorCourseController::class, 'store']);
         Route::put('/me/instructor/courses/{course}', [InstructorCourseController::class, 'update']);
         Route::delete('/me/instructor/courses/{course}', [InstructorCourseController::class, 'destroy']);
+        Route::post('/me/instructor/courses/{course}/modules', [InstructorCourseController::class, 'storeModule']);
+        Route::put('/me/instructor/courses/{course}/modules/{module}', [InstructorCourseController::class, 'updateModule']);
+        Route::delete('/me/instructor/courses/{course}/modules/{module}', [InstructorCourseController::class, 'destroyModule']);
         Route::post('/me/instructor/courses/{course}/lessons', [InstructorCourseController::class, 'storeLesson']);
         Route::put('/me/instructor/courses/{course}/lessons/{lesson}', [InstructorCourseController::class, 'updateLesson']);
         Route::delete('/me/instructor/courses/{course}/lessons/{lesson}', [InstructorCourseController::class, 'destroyLesson']);

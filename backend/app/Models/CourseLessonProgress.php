@@ -7,6 +7,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class CourseLessonProgress extends Model
 {
+    /** Laravel treats "progress" as uncountable; migration uses plural table name. */
+    protected $table = 'course_lesson_progresses';
+
     protected $fillable = [
         'user_id',
         'course_id',
@@ -41,4 +44,3 @@ class CourseLessonProgress extends Model
         return $this->belongsTo(CourseLesson::class, 'course_lesson_id');
     }
 }
-

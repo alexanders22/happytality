@@ -24,7 +24,8 @@ import {
   Tooltip,
 } from 'chart.js'
 import { Bar, Doughnut, Line } from 'react-chartjs-2'
-import { api, type ApiCourse, type ApiInstructor, type ApiLessonProgressItem, type ApiLocale, type ApiUser, localized } from './lib/api'
+import { api, ApiRequestError, type ApiCourse, type ApiInstructor, type ApiLessonProgressItem, type ApiLocale, type ApiUser, localized } from './lib/api'
+import { CourseLearnPage as CourseLearnClassroom } from './pages/CourseLearnPage'
 
 type CartState = Awaited<ReturnType<typeof api.cart>> | null
 type ThemeMode = 'light' | 'dark'
@@ -40,8 +41,8 @@ type AppContextValue = {
   cart: CartState
   cartBusy: boolean
   authBusy: boolean
-  login: (email: string, password: string) => Promise<void>
-  register: (payload: any) => Promise<void>
+  login: (email: string, password: string) => Promise<ApiUser>
+  register: (payload: any) => Promise<ApiUser>
   logout: () => Promise<void>
   refreshCart: () => Promise<void>
   addToCart: (courseId: number, quantity?: number) => Promise<void>
@@ -508,6 +509,7 @@ function AppProvider({ children }: { children: ReactNode }) {
       localStorage.setItem('ht_token', res.token)
       localStorage.setItem('ht_user', JSON.stringify(res.user))
       await refreshCart()
+      return res.user
     } finally {
       setAuthBusy(false)
     }
@@ -522,6 +524,7 @@ function AppProvider({ children }: { children: ReactNode }) {
       localStorage.setItem('ht_token', res.token)
       localStorage.setItem('ht_user', JSON.stringify(res.user))
       await refreshCart()
+      return res.user
     } finally {
       setAuthBusy(false)
     }
@@ -3032,397 +3035,15 @@ function CourseDetailPage() {
   )
 }
 
+function homePathForRole(role?: string | null) {
+  if (role === 'admin') return '/admin'
+  if (role === 'instructor') return '/instructor/dashboard'
+  return '/profile'
+}
+
 function CourseLearnPage() {
-  const { slug } = useParams()
-  const [searchParams, setSearchParams] = useSearchParams()
   const { locale, theme, token } = useApp()
-  const isDark = theme === 'dark'
-  const [course, setCourse] = useState<ApiCourse | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [selectedLessonId, setSelectedLessonId] = useState<number | null>(null)
-  const [lessonProgressMap, setLessonProgressMap] = useState<Record<string, ApiLessonProgressItem>>({})
-  const [playerStatus, setPlayerStatus] = useState<string | null>(null)
-  const [lessonNotes, setLessonNotes] = useState<Record<number, string>>({})
-  const videoRef = useRef<HTMLVideoElement | null>(null)
-  const lastSyncedPositionRef = useRef<Record<number, number>>({})
-
-  useEffect(() => {
-    if (!slug) return
-    setLoading(true)
-    api
-      .course(slug)
-      .then((res) => setCourse(res.course))
-      .catch(() => setCourse((fallbackCourses as any).find((c: any) => c.slug === slug) || (fallbackCourses as any)[0]))
-      .finally(() => setLoading(false))
-  }, [slug])
-
-  useEffect(() => {
-    if (!token || !course?.id) {
-      setLessonProgressMap({})
-      return
-    }
-    api
-      .courseLessonProgress(course.id, token)
-      .then((res) => setLessonProgressMap(res.progress || {}))
-      .catch(() => setLessonProgressMap({}))
-  }, [token, course?.id])
-
-  const lessons = (course?.lessons ?? []).slice().sort((a: any, b: any) => Number(a.sort_order || 0) - Number(b.sort_order || 0))
-  const canPlayLesson = (lesson: any) => !!lesson?.video_url && (!!token || !!lesson?.is_preview)
-  const playableLessons = lessons.filter((lesson: any) => canPlayLesson(lesson))
-
-  useEffect(() => {
-    const queryLessonId = Number(searchParams.get('lesson') || 0)
-    const queryLesson =
-      queryLessonId && lessons.find((lesson: any) => Number(lesson.id) === queryLessonId && canPlayLesson(lesson))
-        ? lessons.find((lesson: any) => Number(lesson.id) === queryLessonId)
-        : null
-
-    const next =
-      (queryLesson as any)?.id ??
-      selectedLessonId ??
-      (playableLessons[0]?.id ?? lessons.find((lesson: any) => lesson.video_url)?.id ?? lessons[0]?.id ?? null)
-
-    if (next && next !== selectedLessonId) {
-      setSelectedLessonId(Number(next))
-    }
-  }, [searchParams, lessons, playableLessons, selectedLessonId])
-
-  const panelClass = isDark ? 'border-white/10 bg-[#0c111a]/92 text-white' : 'border-[var(--line)] bg-white'
-  const panelSoftClass = isDark ? 'border-white/10 bg-white/5 text-white' : 'border-[var(--line)] bg-[var(--paper-2)]'
-  const mutedText = isDark ? 'text-white/60' : 'text-[var(--muted)]'
-  const strongText = isDark ? 'text-white' : 'text-black'
-
-  const selectedLesson =
-    lessons.find((lesson: any) => Number(lesson.id) === Number(selectedLessonId)) ??
-    playableLessons[0] ??
-    lessons[0] ??
-    null
-  const selectedIndex = selectedLesson ? lessons.findIndex((lesson: any) => Number(lesson.id) === Number(selectedLesson.id)) : -1
-  const selectedProgress = selectedLesson ? lessonProgressMap[String(selectedLesson.id)] : null
-  const completedCount = lessons.filter((lesson: any) => lessonProgressMap[String(lesson.id)]?.is_completed).length
-  const overallPercent = lessons.length ? Math.round((completedCount / lessons.length) * 100) : 0
-  const currentLessonTitle = selectedLesson ? textOf((selectedLesson as any).title, locale) : 'Lesson'
-  const canPlaySelected = !!selectedLesson && canPlayLesson(selectedLesson)
-  const noteValue = selectedLesson ? lessonNotes[selectedLesson.id] || '' : ''
-  const nextPlayableLesson =
-    selectedIndex >= 0
-      ? lessons.slice(selectedIndex + 1).find((lesson: any) => canPlayLesson(lesson)) || null
-      : null
-
-  const openLesson = (lesson: any) => {
-    if (!lesson) return
-    if (!canPlayLesson(lesson)) return
-    setSelectedLessonId(Number(lesson.id))
-    const next = new URLSearchParams(searchParams)
-    next.set('lesson', String(lesson.id))
-    setSearchParams(next)
-  }
-
-  const persistLessonProgress = async (videoEl?: HTMLVideoElement | null) => {
-    if (!token || !selectedLesson?.id) return
-    const player = videoEl ?? videoRef.current
-    if (!player) return
-    const currentSeconds = Math.max(0, Math.floor(player.currentTime || 0))
-    const lastSent = lastSyncedPositionRef.current[selectedLesson.id] ?? -1
-    if (Math.abs(currentSeconds - lastSent) < 5 && !player.ended) return
-    lastSyncedPositionRef.current[selectedLesson.id] = currentSeconds
-    try {
-      const res = await api.saveLessonProgress(
-        selectedLesson.id,
-        {
-          last_position_seconds: currentSeconds,
-          duration_seconds: Math.floor(player.duration || selectedLesson.duration_seconds || 0),
-          watched_delta_seconds: Math.max(0, currentSeconds - Math.max(0, lastSent)),
-          is_completed: player.ended,
-        },
-        token,
-      )
-      setLessonProgressMap((prev) => ({ ...prev, [String(selectedLesson.id)]: res.progress }))
-      setPlayerStatus(
-        player.ended
-          ? 'Completed'
-          : `Saved at ${Math.floor(currentSeconds / 60)}:${String(currentSeconds % 60).padStart(2, '0')}`,
-      )
-    } catch {
-      // ignore sync errors to keep playback smooth
-    }
-  }
-
-  if (!course && loading) {
-    return <div className="mt-10 text-sm text-[var(--muted)]">Loading classroom...</div>
-  }
-
-  return (
-    <>
-      <section className={`mt-10 rounded-[22px] border p-5 sm:p-6 ${panelClass}`}>
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <div className={`flex flex-wrap items-center gap-2 text-[11px] ${mutedText}`}>
-              <Link to={`/courses/${course?.slug || slug}`} className={isDark ? 'hover:text-white' : 'hover:text-black'}>
-                ← Back to course page
-              </Link>
-              <span>/</span>
-              <span className={strongText}>Classroom</span>
-            </div>
-            <h1 className="mt-3 text-3xl font-extrabold tracking-tight sm:text-4xl">{textOf(course?.title, locale)}</h1>
-            <p className={`mt-2 text-sm ${mutedText}`}>
-              Learning player layout: video on the left, playlist on the right, lesson details and files below.
-            </p>
-          </div>
-          <div className={`min-w-[220px] rounded-[14px] border px-4 py-3 ${panelSoftClass}`}>
-            <p className={`text-[10px] font-semibold tracking-[0.16em] uppercase ${mutedText}`}>Course progress</p>
-            <div className="mt-2 flex items-center justify-between gap-3">
-              <p className="text-2xl font-extrabold">{overallPercent}%</p>
-              <p className={`text-xs ${mutedText}`}>
-                {completedCount}/{lessons.length || 0} lessons completed
-              </p>
-            </div>
-            <div className={`mt-2 h-2 rounded-full ${isDark ? 'bg-white/10' : 'bg-[var(--paper-2)]'}`}>
-              <div className="h-full rounded-full bg-[var(--brand)] transition-all" style={{ width: `${overallPercent}%` }} />
-            </div>
-            {!token ? (
-              <p className={`mt-2 text-[11px] ${mutedText}`}>
-                Public mode: only preview lessons can be played. Sign in to save progress and continue where you stopped.
-              </p>
-            ) : null}
-          </div>
-        </div>
-      </section>
-
-      <section className="mt-6 grid gap-6 xl:grid-cols-[1.7fr_0.75fr]">
-        <div className="space-y-5">
-          <div className={`overflow-hidden rounded-[18px] border ${panelClass}`}>
-            <div className="relative aspect-video min-h-[260px] bg-black">
-              {selectedLesson && canPlaySelected && selectedLesson.video_url ? (
-                <video
-                  key={`learn-${selectedLesson.id}-${selectedLesson.video_url ?? 'no-src'}`}
-                  ref={videoRef}
-                  controls
-                  playsInline
-                  preload="metadata"
-                  src={selectedLesson.video_url}
-                  poster={selectedLesson.cover_image_url || course?.cover_image_url || undefined}
-                  className="h-full w-full object-cover"
-                  onLoadedMetadata={(e) => {
-                    const progress = lessonProgressMap[String(selectedLesson.id)]?.last_position_seconds ?? 0
-                    if (progress > 2 && progress < (e.currentTarget.duration || Number.MAX_SAFE_INTEGER) - 2) {
-                      try {
-                        e.currentTarget.currentTime = progress
-                        setPlayerStatus(`Resumed from ${Math.floor(progress / 60)}:${String(progress % 60).padStart(2, '0')}`)
-                      } catch {
-                        setPlayerStatus(null)
-                      }
-                    } else {
-                      setPlayerStatus(null)
-                    }
-                  }}
-                  onTimeUpdate={(e) => void persistLessonProgress(e.currentTarget)}
-                  onPause={(e) => void persistLessonProgress(e.currentTarget)}
-                  onEnded={(e) => void persistLessonProgress(e.currentTarget)}
-                />
-              ) : (
-                <>
-                  <img
-                    src={selectedLesson?.cover_image_url || course?.cover_image_url || heroImages[0]}
-                    alt={currentLessonTitle}
-                    className="h-full w-full object-cover opacity-80"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-black/30" />
-                  <div className="absolute inset-0 grid place-items-center px-6 text-center text-white">
-                    <div>
-                      <p className="text-sm font-semibold">
-                        {selectedLesson?.video_url
-                          ? 'This lesson is locked on the public classroom page'
-                          : 'No video uploaded for this lesson yet'}
-                      </p>
-                      <p className="mt-2 text-xs text-white/70">
-                        {selectedLesson?.is_preview
-                          ? 'Preview is enabled, but the lesson has no video file.'
-                          : 'Use the instructor dashboard to upload a lesson video.'}
-                      </p>
-                    </div>
-                  </div>
-                </>
-              )}
-            </div>
-            <div className={`border-t p-4 sm:p-5 ${isDark ? 'border-white/10' : 'border-[var(--line)]'}`}>
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <p className={`text-[10px] font-semibold uppercase tracking-[0.16em] ${mutedText}`}>
-                    Lesson {selectedIndex >= 0 ? selectedIndex + 1 : '-'} of {Math.max(lessons.length, 1)}
-                  </p>
-                  <h2 className="mt-1 text-xl font-bold">{currentLessonTitle}</h2>
-                  <p className={`mt-2 text-sm ${mutedText}`}>
-                    {selectedLesson?.duration_seconds
-                      ? `${Math.max(1, Math.round(selectedLesson.duration_seconds / 60))} min`
-                      : 'Duration not set'}
-                    {selectedLesson?.is_preview ? ' · Preview lesson' : ' · Full lesson'}
-                    {selectedProgress ? ` · ${selectedProgress.completed_percent}% watched` : ''}
-                  </p>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {playerStatus ? (
-                    <span className={`rounded-full border px-3 py-2 text-[10px] font-semibold ${isDark ? 'border-white/12 bg-white/5 text-white' : 'border-[var(--line)] bg-white'}`}>
-                      {playerStatus}
-                    </span>
-                  ) : null}
-                  {nextPlayableLesson ? (
-                    <button
-                      type="button"
-                      onClick={() => openLesson(nextPlayableLesson)}
-                      className={`rounded-full px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.14em] ${isDark ? 'bg-white text-black' : 'bg-black text-white'}`}
-                    >
-                      Next lesson
-                    </button>
-                  ) : null}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className={`rounded-[18px] border p-5 ${panelClass}`}>
-            <h3 className="text-base font-bold">Lesson description</h3>
-            <p className={`mt-3 text-sm leading-7 ${mutedText}`}>
-              {selectedLesson ? textOf((selectedLesson as any).description, locale) || 'No lesson description provided yet.' : 'Select a lesson to view details.'}
-            </p>
-          </div>
-
-          <div className="grid gap-5 lg:grid-cols-[1fr_1fr]">
-            <div className={`rounded-[18px] border p-5 ${panelClass}`}>
-              <h3 className="text-base font-bold">Files & materials</h3>
-              {(selectedLesson?.materials ?? []).length ? (
-                <div className="mt-3 space-y-2">
-                  {(selectedLesson?.materials ?? []).map((file: any, idx: number) => (
-                    <a
-                      key={`${selectedLesson?.id}-material-${idx}`}
-                      href={file.url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className={`flex items-center justify-between rounded-[12px] border px-3 py-2 text-sm ${isDark ? 'border-white/10 bg-white/5 hover:bg-white/10' : 'border-[var(--line)] bg-[var(--paper-2)] hover:bg-white'}`}
-                    >
-                      <span className="truncate pr-3">{file.name || `Material ${idx + 1}`}</span>
-                      <span className={`shrink-0 text-[10px] uppercase tracking-[0.14em] ${mutedText}`}>Open</span>
-                    </a>
-                  ))}
-                </div>
-              ) : (
-                <p className={`mt-3 text-sm ${mutedText}`}>No files attached for this lesson.</p>
-              )}
-            </div>
-
-            <div className={`rounded-[18px] border p-5 ${panelClass}`}>
-              <div className="flex items-center justify-between gap-3">
-                <h3 className="text-base font-bold">My notes</h3>
-                <span className={`text-[11px] ${mutedText}`}>Saved locally in browser (MVP)</span>
-              </div>
-              <textarea
-                value={noteValue}
-                onChange={(e) => {
-                  if (!selectedLesson?.id) return
-                  setLessonNotes((prev) => ({ ...prev, [selectedLesson.id]: e.target.value }))
-                }}
-                placeholder="Write notes while watching..."
-                className={`mt-3 h-40 w-full resize-y rounded-[12px] border px-3 py-2 text-sm outline-none ${isDark ? 'border-white/10 bg-white/5 text-white placeholder:text-white/35' : 'border-[var(--line)] bg-white placeholder:text-[#999]'}`}
-              />
-            </div>
-          </div>
-        </div>
-
-        <aside className="space-y-5 xl:sticky xl:top-24 xl:self-start">
-          <div className={`rounded-[18px] border p-4 ${panelClass}`}>
-            <div className="flex items-center gap-3">
-              <img
-                src={course?.cover_image_url || heroImages[0]}
-                alt={textOf(course?.title, locale)}
-                className="size-14 rounded-[12px] object-cover"
-              />
-              <div className="min-w-0">
-                <p className={`text-[10px] font-semibold uppercase tracking-[0.16em] ${mutedText}`}>Playlist</p>
-                <p className="line-clamp-2 text-sm font-semibold">{textOf(course?.title, locale)}</p>
-                <p className={`text-xs ${mutedText}`}>{lessons.length} lessons</p>
-              </div>
-            </div>
-
-            <div className={`mt-4 rounded-[14px] border ${isDark ? 'border-white/10 bg-white/5' : 'border-[var(--line)] bg-[var(--paper-2)]'}`}>
-              <div className={`max-h-[560px] overflow-y-auto p-2 ${isDark ? 'scrollbar-dark' : ''}`}>
-                {!lessons.length ? (
-                  <p className={`px-2 py-3 text-sm ${mutedText}`}>No lessons added yet.</p>
-                ) : (
-                  lessons.map((lesson: any, idx: number) => {
-                    const isActive = selectedLesson?.id === lesson.id
-                    const isPlayable = canPlayLesson(lesson)
-                    const progress = lessonProgressMap[String(lesson.id)]
-                    return (
-                      <button
-                        key={lesson.id || idx}
-                        type="button"
-                        onClick={() => openLesson(lesson)}
-                        disabled={!isPlayable}
-                        className={`mb-2 block w-full rounded-[12px] border p-3 text-left transition ${
-                          isActive
-                            ? isDark
-                              ? 'border-[var(--brand)]/65 bg-[var(--brand)]/12'
-                              : 'border-[var(--brand)]/40 bg-[var(--brand)]/8'
-                            : isDark
-                              ? 'border-white/8 bg-white/0 hover:border-white/15 hover:bg-white/5'
-                              : 'border-[var(--line)] bg-white hover:bg-[var(--paper)]'
-                        } ${!isPlayable ? 'cursor-not-allowed opacity-60' : ''}`}
-                      >
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="min-w-0">
-                            <p className="line-clamp-2 text-sm font-semibold">
-                              {String(idx + 1).padStart(2, '0')}. {textOf(lesson.title, locale)}
-                            </p>
-                            <p className={`mt-1 text-xs ${mutedText}`}>
-                              {lesson.duration_seconds ? `${Math.max(1, Math.round(lesson.duration_seconds / 60))} min` : 'No duration'}
-                              {' · '}
-                              {isPlayable ? 'Playable' : token ? 'No video' : lesson.is_preview ? 'Preview (no video)' : 'Locked'}
-                            </p>
-                          </div>
-                          {isActive ? (
-                            <span className={`rounded-full px-2 py-1 text-[10px] font-semibold uppercase ${isDark ? 'bg-white text-black' : 'bg-black text-white'}`}>
-                              Playing
-                            </span>
-                          ) : null}
-                        </div>
-
-                        <div className="mt-2 flex flex-wrap gap-1.5">
-                          {lesson.is_preview ? (
-                            <span className="rounded-full bg-[var(--brand-olive)]/20 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-white/85">
-                              Preview
-                            </span>
-                          ) : null}
-                          {lesson.is_published ? (
-                            <span className="rounded-full bg-[var(--brand)]/20 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-white/85">
-                              Published
-                            </span>
-                          ) : (
-                            <span className={`rounded-full px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] ${isDark ? 'bg-white/8 text-white/70' : 'bg-[var(--paper-2)] text-[var(--muted)]'}`}>
-                              Draft
-                            </span>
-                          )}
-                          {progress?.is_completed ? (
-                            <span className="rounded-full bg-emerald-500/20 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-emerald-200">
-                              Done
-                            </span>
-                          ) : progress ? (
-                            <span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${isDark ? 'bg-white/8 text-white/75' : 'bg-[var(--paper-2)] text-[var(--muted)]'}`}>
-                              {progress.completed_percent}%
-                            </span>
-                          ) : null}
-                        </div>
-                      </button>
-                    )
-                  })
-                )}
-              </div>
-            </div>
-          </div>
-        </aside>
-      </section>
-    </>
-  )
+  return <CourseLearnClassroom locale={locale} theme={theme} token={token} Link={Link} />
 }
 
 function AboutPage() {
@@ -3492,37 +3113,53 @@ function AuthScreen({ mode }: { mode: 'login' | 'register' }) {
   const { login, register, authBusy, user, locale, theme } = useApp()
   const navigate = useNavigate()
   const [error, setError] = useState<string | null>(null)
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({})
   const [info, setInfo] = useState<string | null>(null)
   const [form, setForm] = useState({
     name: '',
     email: '',
     password: '',
     password_confirmation: '',
-    role: 'student',
+    role: 'student' as 'student' | 'instructor',
   })
 
   useEffect(() => {
-    if (user) navigate('/profile')
+    if (user) navigate(homePathForRole(user.role))
   }, [user, navigate])
 
   useEffect(() => {
     setError(null)
+    setFieldErrors({})
     setInfo(null)
   }, [mode])
+
+  const fieldError = (key: string) => fieldErrors[key]?.[0] || null
 
   const submit = async (e: FormEvent) => {
     e.preventDefault()
     setError(null)
+    setFieldErrors({})
     setInfo(null)
     try {
-      if (mode === 'login') {
-        await login(form.email, form.password)
-      } else {
-        await register({ ...form, locale })
-      }
-      navigate('/profile')
+      const nextUser =
+        mode === 'login'
+          ? await login(form.email, form.password)
+          : await register({
+              name: form.name,
+              email: form.email,
+              password: form.password,
+              password_confirmation: form.password_confirmation,
+              role: form.role === 'instructor' ? 'instructor' : 'student',
+              locale,
+            })
+      navigate(homePathForRole(nextUser.role))
     } catch (err: any) {
-      setError(err.message || 'Authentication failed')
+      if (err instanceof ApiRequestError) {
+        setFieldErrors(err.errors || {})
+        setError(err.message || 'Authentication failed')
+      } else {
+        setError(err?.message || 'Authentication failed')
+      }
     }
   }
 
@@ -3531,6 +3168,11 @@ function AuthScreen({ mode }: { mode: 'login' | 'register' }) {
   const authHeroBg = isLogin
     ? 'linear-gradient(140deg, rgba(123,112,106,0.88) 0%, #10131a 45%, rgba(58,111,149,0.55) 100%)'
     : 'linear-gradient(140deg, rgba(139,67,53,0.9) 0%, #11131b 42%, rgba(77,102,49,0.52) 100%)'
+  const inputBase = isDark
+    ? 'border-white/12 bg-white/5 text-white placeholder:text-white/35 focus:border-[var(--brand-blue)]'
+    : 'border-[var(--line)] bg-[var(--paper-2)] focus:border-[var(--brand-blue)]'
+  const fieldHint = (key: string) =>
+    fieldError(key) ? <p className="mt-1 text-xs text-red-500">{fieldError(key)}</p> : null
 
   return (
     <>
@@ -3604,10 +3246,10 @@ function AuthScreen({ mode }: { mode: 'login' | 'register' }) {
                 </div>
                 <div className={`rounded-[20px] border p-4 ${isLogin ? 'border-white/10 bg-white/5' : 'border-[var(--brand-taupe)]/20 bg-[var(--brand-taupe)]/10'}`}>
                   <p className="text-xs font-semibold uppercase tracking-[0.16em] text-white/70">Demo accounts</p>
-                  <div className="mt-3 space-y-1 text-xs text-white/80">
-                    <p>admin@happytality.local</p>
-                    <p>instructor@happytality.local</p>
-                    <p>student@happytality.local</p>
+                  <div className="mt-3 space-y-2 text-xs text-white/80">
+                    <p>admin@happytality.local · Admin12345!</p>
+                    <p>instructor@happytality.local · Instructor12345!</p>
+                    <p>student@happytality.local · Student12345!</p>
                   </div>
                 </div>
               </div>
@@ -3653,6 +3295,7 @@ function AuthScreen({ mode }: { mode: 'login' | 'register' }) {
               type="button"
               onClick={() => {
                 setError(null)
+                setFieldErrors({})
                 setInfo('Google sign-in UI is added. Backend OAuth redirect/callback endpoint is the next step.')
               }}
               className={`mt-6 flex w-full items-center justify-center gap-2 rounded-[14px] border px-4 py-3 text-sm font-semibold ${
@@ -3673,54 +3316,50 @@ function AuthScreen({ mode }: { mode: 'login' | 'register' }) {
 
             <form onSubmit={submit} className="grid gap-3 sm:grid-cols-2">
               {!isLogin ? (
-                <input
-                  value={form.name}
-                  onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-                  placeholder="Full name"
-                  className={`rounded-[14px] border px-4 py-3 text-sm outline-none ${
-                    isDark
-                      ? 'border-white/12 bg-white/5 text-white placeholder:text-white/35 focus:border-[var(--brand-blue)]'
-                      : 'border-[var(--line)] bg-[var(--paper-2)] focus:border-[var(--brand-blue)]'
-                  }`}
-                />
+                <div className="sm:col-span-1">
+                  <input
+                    value={form.name}
+                    onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+                    placeholder="Full name"
+                    className={`w-full rounded-[14px] border px-4 py-3 text-sm outline-none ${inputBase} ${fieldError('name') ? 'border-red-400' : ''}`}
+                  />
+                  {fieldHint('name')}
+                </div>
               ) : null}
 
-              <input
-                value={form.email}
-                onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
-                placeholder="Email address"
-                type="email"
-                className={`rounded-[14px] border px-4 py-3 text-sm outline-none ${
-                  isDark
-                    ? 'border-white/12 bg-white/5 text-white placeholder:text-white/35 focus:border-[var(--brand-blue)]'
-                    : 'border-[var(--line)] bg-[var(--paper-2)] focus:border-[var(--brand-blue)]'
-                } ${isLogin ? 'sm:col-span-2' : ''}`}
-              />
+              <div className={isLogin ? 'sm:col-span-2' : ''}>
+                <input
+                  value={form.email}
+                  onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
+                  placeholder="Email address"
+                  type="email"
+                  className={`w-full rounded-[14px] border px-4 py-3 text-sm outline-none ${inputBase} ${fieldError('email') ? 'border-red-400' : ''}`}
+                />
+                {fieldHint('email')}
+              </div>
 
-              <input
-                type="password"
-                value={form.password}
-                onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
-                placeholder="Password"
-                className={`rounded-[14px] border px-4 py-3 text-sm outline-none ${
-                  isDark
-                    ? 'border-white/12 bg-white/5 text-white placeholder:text-white/35 focus:border-[var(--brand-blue)]'
-                    : 'border-[var(--line)] bg-[var(--paper-2)] focus:border-[var(--brand-blue)]'
-                }`}
-              />
-
-              {!isLogin ? (
+              <div>
                 <input
                   type="password"
-                  value={form.password_confirmation}
-                  onChange={(e) => setForm((f) => ({ ...f, password_confirmation: e.target.value }))}
-                  placeholder="Confirm password"
-                  className={`rounded-[14px] border px-4 py-3 text-sm outline-none ${
-                    isDark
-                      ? 'border-white/12 bg-white/5 text-white placeholder:text-white/35 focus:border-[var(--brand-blue)]'
-                      : 'border-[var(--line)] bg-[var(--paper-2)] focus:border-[var(--brand-blue)]'
-                  }`}
+                  value={form.password}
+                  onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
+                  placeholder="Password"
+                  className={`w-full rounded-[14px] border px-4 py-3 text-sm outline-none ${inputBase} ${fieldError('password') ? 'border-red-400' : ''}`}
                 />
+                {fieldHint('password')}
+              </div>
+
+              {!isLogin ? (
+                <div>
+                  <input
+                    type="password"
+                    value={form.password_confirmation}
+                    onChange={(e) => setForm((f) => ({ ...f, password_confirmation: e.target.value }))}
+                    placeholder="Confirm password"
+                    className={`w-full rounded-[14px] border px-4 py-3 text-sm outline-none ${inputBase} ${fieldError('password_confirmation') ? 'border-red-400' : ''}`}
+                  />
+                  {fieldHint('password_confirmation')}
+                </div>
               ) : (
                 <button
                   type="button"
@@ -3734,18 +3373,17 @@ function AuthScreen({ mode }: { mode: 'login' | 'register' }) {
 
               {!isLogin ? (
                 <div className="sm:col-span-2 grid gap-3 sm:grid-cols-[1fr_1fr]">
-                  <select
-                    value={form.role}
-                    onChange={(e) => setForm((f) => ({ ...f, role: e.target.value }))}
-                    className={`rounded-[14px] border px-4 py-3 text-sm outline-none ${
-                      isDark
-                        ? 'border-white/12 bg-white/5 text-white focus:border-[var(--brand-blue)]'
-                        : 'border-[var(--line)] bg-[var(--paper-2)] focus:border-[var(--brand-blue)]'
-                    }`}
-                  >
-                    <option value="student">Student</option>
-                    <option value="instructor">Instructor</option>
-                  </select>
+                  <div>
+                    <select
+                      value={form.role}
+                      onChange={(e) => setForm((f) => ({ ...f, role: e.target.value as 'student' | 'instructor' }))}
+                      className={`w-full rounded-[14px] border px-4 py-3 text-sm outline-none ${inputBase} ${fieldError('role') ? 'border-red-400' : ''}`}
+                    >
+                      <option value="student">Student</option>
+                      <option value="instructor">Instructor</option>
+                    </select>
+                    {fieldHint('role')}
+                  </div>
                   <div className={`rounded-[14px] border px-4 py-3 text-sm ${isDark ? 'border-white/12 bg-white/5 text-white/70' : 'border-[var(--line)] bg-[var(--paper-2)] text-[var(--muted)]'}`}>
                     Language: {locale.toUpperCase()}
                   </div>
@@ -3787,7 +3425,7 @@ function AuthScreen({ mode }: { mode: 'login' | 'register' }) {
           </div>
 
           <div className={`mt-4 rounded-[18px] border p-4 text-xs ${isDark ? 'border-white/10 bg-white/5 text-white/55' : 'border-[var(--line)] bg-white text-[var(--muted)]'}`}>
-            Demo password format is already seeded in the backend. Use the demo users from the left panel for quick testing.
+            Demo passwords from seeder: Admin12345!, Instructor12345!, Student12345!
           </div>
         </div>
       </section>
@@ -4244,7 +3882,7 @@ function UserProfilePage() {
                             {order.payment_status} · {order.enrollment_status}
                           </p>
                         </div>
-                        <Link to={`/courses/${order.course?.slug || ''}`} className={`rounded-full border px-3 py-1.5 text-[10px] font-semibold uppercase ${outlineBtnClass}`}>
+                        <Link to={`/courses/${order.course?.slug || ''}/learn`} className={`rounded-full border px-3 py-1.5 text-[10px] font-semibold uppercase ${outlineBtnClass}`}>
                           Continue
                         </Link>
                       </div>
@@ -4316,7 +3954,7 @@ function UserProfilePage() {
                             <div className={`h-full ${isDark ? 'bg-white' : 'bg-black'}`} style={{ width: `${order.progress_percent ?? 0}%` }} />
                           </div>
                           <div className="mt-3 flex flex-wrap gap-2">
-                            <Link to={`/courses/${order.course?.slug || ''}`} className={`rounded-full px-4 py-2 text-xs font-semibold ${solidBtnClass}`}>
+                            <Link to={`/courses/${order.course?.slug || ''}/learn`} className={`rounded-full px-4 py-2 text-xs font-semibold ${solidBtnClass}`}>
                               Continue course
                             </Link>
                             <button type="button" className={`rounded-full border px-4 py-2 text-xs font-semibold ${outlineBtnClass}`}>
@@ -4459,7 +4097,10 @@ function InstructorDashboardPage() {
     is_published: true,
     cover_image_url: '',
     video_url: '',
+    course_module_id: '',
   })
+  const [moduleDraft, setModuleDraft] = useState({ title: '', description: '', is_published: true })
+  const [moduleBusy, setModuleBusy] = useState(false)
   const [lessonFiles, setLessonFiles] = useState<{ cover: File | null; video: File | null; materials: File[] }>({
     cover: null,
     video: null,
@@ -4570,6 +4211,7 @@ function InstructorDashboardPage() {
       is_published: true,
       cover_image_url: '',
       video_url: '',
+      course_module_id: '',
     })
     setLessonFiles({ cover: null, video: null, materials: [] })
     setFileInputResetKey((k) => k + 1)
@@ -4577,6 +4219,23 @@ function InstructorDashboardPage() {
   }
 
   const builderLessons = activeBuilderCourse?.lessons ?? []
+  const builderModules = (activeBuilderCourse?.modules ?? [])
+    .slice()
+    .sort((a: any, b: any) => Number(a.sort_order || 0) - Number(b.sort_order || 0))
+  const curriculumGroups = (() => {
+    if (!builderModules.length) {
+      return [{ id: null as number | null, title: 'Course content', lessons: builderLessons }]
+    }
+    const used = new Set<number>()
+    const groups = builderModules.map((mod: any) => {
+      const lessons = builderLessons.filter((lesson: any) => Number(lesson.course_module_id) === Number(mod.id))
+      lessons.forEach((lesson: any) => used.add(Number(lesson.id)))
+      return { id: Number(mod.id) as number | null, title: textOf(mod.title, locale) || `Module ${mod.sort_order}`, lessons }
+    })
+    const orphan = builderLessons.filter((lesson: any) => !used.has(Number(lesson.id)))
+    if (orphan.length) groups.push({ id: null, title: 'Unassigned lessons', lessons: orphan })
+    return groups
+  })()
   const selectedLesson = builderLessons.find((lesson: any) => lesson.id === selectedLessonId) ?? null
   const selectedLessonDisplayOrder = selectedLesson ? Math.max(1, builderLessons.findIndex((lesson: any) => lesson.id === selectedLesson.id) + 1) : null
 
@@ -4602,6 +4261,7 @@ function InstructorDashboardPage() {
       is_published: !!lesson?.is_published,
       cover_image_url: lesson?.cover_image_url || '',
       video_url: lesson?.video_url || '',
+      course_module_id: lesson?.course_module_id ? String(lesson.course_module_id) : '',
     })
     setLessonFiles({ cover: null, video: null, materials: [] })
     setFileInputResetKey((k) => k + 1)
@@ -4651,6 +4311,11 @@ function InstructorDashboardPage() {
       fd.append('duration_seconds', String(Number(lessonDraft.duration_seconds || 0)))
       fd.append('is_preview', lessonDraft.is_preview ? '1' : '0')
       fd.append('is_published', lessonDraft.is_published ? '1' : '0')
+      if (lessonDraft.course_module_id) {
+        fd.append('course_module_id', String(lessonDraft.course_module_id))
+      } else if (lessonEditorMode === 'edit') {
+        fd.append('course_module_id', '')
+      }
       if (lessonDraft.cover_image_url) fd.append('cover_image_url', lessonDraft.cover_image_url)
       if (lessonDraft.video_url) fd.append('video_url', lessonDraft.video_url)
       if (lessonFiles.cover) fd.append('cover_image', lessonFiles.cover)
@@ -4700,6 +4365,48 @@ function InstructorDashboardPage() {
       setBuilderNotice({ type: 'success', text: `Lesson deleted: ${textOf(lesson.title, locale) || 'Untitled lesson'}` })
     } catch (e: any) {
       setBuilderNotice({ type: 'error', text: e.message || 'Failed to delete lesson' })
+    }
+  }
+
+  const createModuleForCourse = async () => {
+    if (!token || !activeCourseBuilderId) return
+    const title = moduleDraft.title.trim()
+    if (!title) {
+      setBuilderNotice({ type: 'error', text: 'Module title is required.' })
+      return
+    }
+    setModuleBusy(true)
+    try {
+      await api.createMyModule(
+        activeCourseBuilderId,
+        {
+          title: { en: title, ka: title, ru: title },
+          description: moduleDraft.description
+            ? { en: moduleDraft.description, ka: moduleDraft.description, ru: moduleDraft.description }
+            : undefined,
+          sort_order: (builderModules.reduce((max: number, mod: any) => Math.max(max, Number(mod.sort_order || 0)), 0) || 0) + 1,
+          is_published: !!moduleDraft.is_published,
+        },
+        token,
+      )
+      setModuleDraft({ title: '', description: '', is_published: true })
+      await reloadInstructorData(activeCourseBuilderId)
+      setBuilderNotice({ type: 'success', text: 'Module created. Assign lessons to it from the lesson editor.' })
+    } catch (e: any) {
+      setBuilderNotice({ type: 'error', text: e.message || 'Failed to create module' })
+    } finally {
+      setModuleBusy(false)
+    }
+  }
+
+  const deleteModuleFromBuilder = async (moduleId: number) => {
+    if (!token || !activeCourseBuilderId) return
+    try {
+      await api.deleteMyModule(activeCourseBuilderId, moduleId, token)
+      await reloadInstructorData(activeCourseBuilderId)
+      setBuilderNotice({ type: 'success', text: 'Module deleted.' })
+    } catch (e: any) {
+      setBuilderNotice({ type: 'error', text: e.message || 'Failed to delete module' })
     }
   }
 
@@ -5205,111 +4912,154 @@ function InstructorDashboardPage() {
                     <div className="mb-3 flex items-center justify-between gap-2">
                       <div>
                         <h4 className="text-sm font-semibold">Curriculum</h4>
-                        <p className={`text-xs ${mutedText}`}>{builderLessons.length} lessons · click any lesson to edit</p>
+                        <p className={`text-xs ${mutedText}`}>{builderLessons.length} lessons · {builderModules.length} modules</p>
                       </div>
                       <button type="button" onClick={() => beginCreateLesson()} className={`rounded-full border px-3 py-1.5 text-[10px] font-semibold uppercase ${outlineBtnClass}`}>
                         + Add lesson
                       </button>
                     </div>
 
-                    <div className="max-h-[58vh] space-y-2 overflow-auto pr-1">
-                      {builderLessons.length ? (
-                        builderLessons.map((lesson: any, idx: number) => {
-                          const isActiveLesson = lesson.id === selectedLessonId
-                          const isDragSource = dragLessonId === lesson.id
-                          const isDragOver = dragOverLessonId === lesson.id && dragLessonId !== lesson.id
-                          const displayOrder = idx + 1
-                          return (
-                            <div
-                              key={lesson.id}
-                              draggable={!reorderBusy}
-                              onDragStart={() => {
-                                setDragLessonId(lesson.id)
-                                setDragOverLessonId(null)
-                              }}
-                              onDragOver={(e) => {
-                                e.preventDefault()
-                                if (dragOverLessonId !== lesson.id) setDragOverLessonId(lesson.id)
-                              }}
-                              onDrop={(e) => {
-                                e.preventDefault()
-                                if (dragLessonId && dragLessonId !== lesson.id) {
-                                  void reorderLessonsInBuilder(dragLessonId, lesson.id)
-                                }
-                                setDragLessonId(null)
-                                setDragOverLessonId(null)
-                              }}
-                              onDragEnd={() => {
-                                setDragLessonId(null)
-                                setDragOverLessonId(null)
-                              }}
-                              className={`w-full rounded-[12px] border p-3 text-left transition ${
-                                isActiveLesson
-                                  ? isDark
-                                    ? 'border-[var(--brand-blue)]/35 bg-[var(--brand-blue)]/16'
-                                    : 'border-[var(--brand-blue)]/35 bg-[var(--brand-blue)]/12 text-black'
-                                  : isDark
-                                    ? 'border-white/10 bg-white/5 hover:bg-white/10'
-                                    : 'border-[var(--line)] bg-[var(--paper-2)] hover:bg-white'
-                              } ${isDragSource ? 'opacity-60' : ''} ${isDragOver ? (isDark ? 'ring-2 ring-[var(--brand-blue)]/40' : 'ring-2 ring-[var(--brand-blue)]/30') : ''}`}
-                            >
-                              <div className="flex items-start justify-between gap-3">
+                    <div className={`mb-3 rounded-[12px] border p-3 ${isDark ? 'border-white/10 bg-white/5' : 'border-[var(--line)] bg-white'}`}>
+                      <p className="text-xs font-semibold uppercase tracking-[0.12em]">New module</p>
+                      <input
+                        value={moduleDraft.title}
+                        onChange={(e) => setModuleDraft((f) => ({ ...f, title: e.target.value }))}
+                        placeholder="Module title"
+                        className={`mt-2 w-full rounded-xl border px-3 py-2 text-sm ${inputClass}`}
+                      />
+                      <textarea
+                        value={moduleDraft.description}
+                        onChange={(e) => setModuleDraft((f) => ({ ...f, description: e.target.value }))}
+                        placeholder="Description (optional)"
+                        rows={2}
+                        className={`mt-2 w-full rounded-xl border px-3 py-2 text-sm ${inputClass}`}
+                      />
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        <label className={`flex items-center gap-2 rounded-full border px-3 py-1.5 text-[11px] ${outlineBtnClass}`}>
+                          <input type="checkbox" checked={!!moduleDraft.is_published} onChange={(e) => setModuleDraft((f) => ({ ...f, is_published: e.target.checked }))} />
+                          Published
+                        </label>
+                        <button
+                          type="button"
+                          disabled={moduleBusy || !activeCourseBuilderId}
+                          onClick={() => void createModuleForCourse()}
+                          className={`rounded-full px-3 py-1.5 text-[11px] font-semibold disabled:opacity-50 ${solidBtnClass}`}
+                        >
+                          {moduleBusy ? 'Saving...' : 'Create module'}
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="max-h-[58vh] space-y-3 overflow-auto pr-1">
+                      {curriculumGroups.some((g: any) => g.lessons.length) || builderModules.length ? (
+                        curriculumGroups.map((group: any) => (
+                          <div key={group.id ?? group.title} className={`rounded-[12px] border p-2 ${isDark ? 'border-white/10 bg-white/5' : 'border-[var(--line)] bg-white'}`}>
+                            <div className="mb-2 flex items-center justify-between gap-2 px-1">
+                              <p className="text-xs font-semibold uppercase tracking-[0.12em]">{group.title}</p>
+                              {group.id ? (
                                 <button
                                   type="button"
-                                  onClick={() => beginEditLesson(lesson)}
-                                  className="min-w-0 flex-1 text-left"
+                                  onClick={() => void deleteModuleFromBuilder(group.id)}
+                                  className={`rounded-full border px-2 py-1 text-[10px] font-semibold ${isDark ? 'border-red-400/20 bg-red-400/10 text-red-200' : 'border-red-200 bg-red-50 text-red-700'}`}
                                 >
-                                  <div className="flex items-start gap-2">
-                                    <span className={`mt-0.5 inline-flex h-6 min-w-6 items-center justify-center rounded-full text-[10px] font-semibold ${isDark ? 'border border-white/12 bg-white/5 text-white/80' : 'border border-[var(--line)] bg-white text-[#444]'}`}>
-                                      ⋮⋮
-                                    </span>
-                                    <div className="min-w-0 flex-1">
-                                      <p className="text-sm font-semibold">
-                                        {displayOrder}. {textOf(lesson.title, locale) || 'Untitled lesson'}
-                                      </p>
-                                      <p className={`mt-1 text-xs ${isActiveLesson && !isDark ? 'text-white/80' : mutedText}`}>
-                                        {Math.max(1, Math.round((lesson.duration_seconds ?? 0) / 60 || 1))} min · {(lesson.materials ?? []).length} files
-                                      </p>
-                                      <div className="mt-2 flex flex-wrap gap-1.5">
-                                        <span className={`rounded-full px-2 py-1 text-[9px] font-semibold uppercase ${lesson.is_preview ? (isDark ? 'border border-[var(--brand-olive)]/25 bg-[var(--brand-olive)]/18 text-white' : 'border border-[var(--brand-olive)]/20 bg-[var(--brand-olive)]/10 text-[#40522e]') : (isDark ? 'border border-white/10 bg-white/5 text-white/70' : 'border border-[var(--line)] bg-white text-[#666]')}`}>
-                                          {lesson.is_preview ? 'Preview' : 'Members'}
-                                        </span>
-                                        <span className={`rounded-full px-2 py-1 text-[9px] font-semibold uppercase ${lesson.is_published ? (isDark ? 'border border-[var(--brand-blue)]/25 bg-[var(--brand-blue)]/18 text-white' : 'border border-[var(--brand-blue)]/20 bg-[var(--brand-blue)]/10 text-[#28435e]') : (isDark ? 'border border-[var(--brand-rust)]/25 bg-[var(--brand-rust)]/15 text-white' : 'border border-[var(--brand-rust)]/20 bg-[var(--brand-rust)]/10 text-[#6f3f31]')}`}>
-                                          {lesson.is_published ? 'Published' : 'Draft'}
-                                        </span>
-                                        {(lesson.cover_image_url || lesson.video_url) ? (
-                                          <span className={`rounded-full px-2 py-1 text-[9px] font-semibold uppercase ${isActiveLesson ? (isDark ? 'bg-[var(--brand-blue)]/25 text-white' : 'bg-[var(--brand-blue)]/15 text-[#1f2f42]') : isDark ? 'bg-white/10 text-white/80' : 'bg-white'}`}>
-                                            Media
+                                  Delete module
+                                </button>
+                              ) : null}
+                            </div>
+                            {group.lessons.length ? (
+                              group.lessons.map((lesson: any) => {
+                                const idx = builderLessons.findIndex((l: any) => l.id === lesson.id)
+                                const displayOrder = idx >= 0 ? idx + 1 : 0
+                                const isActiveLesson = lesson.id === selectedLessonId
+                                const isDragSource = dragLessonId === lesson.id
+                                const isDragOver = dragOverLessonId === lesson.id && dragLessonId !== lesson.id
+                                return (
+                                  <div
+                                    key={lesson.id}
+                                    draggable={!reorderBusy}
+                                    onDragStart={() => {
+                                      setDragLessonId(lesson.id)
+                                      setDragOverLessonId(null)
+                                    }}
+                                    onDragOver={(e) => {
+                                      e.preventDefault()
+                                      if (dragOverLessonId !== lesson.id) setDragOverLessonId(lesson.id)
+                                    }}
+                                    onDrop={(e) => {
+                                      e.preventDefault()
+                                      if (dragLessonId && dragLessonId !== lesson.id) {
+                                        void reorderLessonsInBuilder(dragLessonId, lesson.id)
+                                      }
+                                      setDragLessonId(null)
+                                      setDragOverLessonId(null)
+                                    }}
+                                    onDragEnd={() => {
+                                      setDragLessonId(null)
+                                      setDragOverLessonId(null)
+                                    }}
+                                    className={`mb-2 w-full rounded-[12px] border p-3 text-left transition ${
+                                      isActiveLesson
+                                        ? isDark
+                                          ? 'border-[var(--brand-blue)]/35 bg-[var(--brand-blue)]/16'
+                                          : 'border-[var(--brand-blue)]/35 bg-[var(--brand-blue)]/12 text-black'
+                                        : isDark
+                                          ? 'border-white/10 bg-white/5 hover:bg-white/10'
+                                          : 'border-[var(--line)] bg-[var(--paper-2)] hover:bg-white'
+                                    } ${isDragSource ? 'opacity-60' : ''} ${isDragOver ? (isDark ? 'ring-2 ring-[var(--brand-blue)]/40' : 'ring-2 ring-[var(--brand-blue)]/30') : ''}`}
+                                  >
+                                    <div className="flex items-start justify-between gap-3">
+                                      <button type="button" onClick={() => beginEditLesson(lesson)} className="min-w-0 flex-1 text-left">
+                                        <div className="flex items-start gap-2">
+                                          <span className={`mt-0.5 inline-flex h-6 min-w-6 items-center justify-center rounded-full text-[10px] font-semibold ${isDark ? 'border border-white/12 bg-white/5 text-white/80' : 'border border-[var(--line)] bg-white text-[#444]'}`}>
+                                            ⋮⋮
                                           </span>
-                                        ) : null}
+                                          <div className="min-w-0 flex-1">
+                                            <p className="text-sm font-semibold">
+                                              {displayOrder}. {textOf(lesson.title, locale) || 'Untitled lesson'}
+                                            </p>
+                                            <p className={`mt-1 text-xs ${isActiveLesson && !isDark ? 'text-white/80' : mutedText}`}>
+                                              {Math.max(1, Math.round((lesson.duration_seconds ?? 0) / 60 || 1))} min · {(lesson.materials ?? []).length} files
+                                            </p>
+                                            <div className="mt-2 flex flex-wrap gap-1.5">
+                                              <span className={`rounded-full px-2 py-1 text-[9px] font-semibold uppercase ${lesson.is_preview ? (isDark ? 'border border-[var(--brand-olive)]/25 bg-[var(--brand-olive)]/18 text-white' : 'border border-[var(--brand-olive)]/20 bg-[var(--brand-olive)]/10 text-[#40522e]') : (isDark ? 'border border-white/10 bg-white/5 text-white/70' : 'border border-[var(--line)] bg-white text-[#666]')}`}>
+                                                {lesson.is_preview ? 'Preview' : 'Members'}
+                                              </span>
+                                              <span className={`rounded-full px-2 py-1 text-[9px] font-semibold uppercase ${lesson.is_published ? (isDark ? 'border border-[var(--brand-blue)]/25 bg-[var(--brand-blue)]/18 text-white' : 'border border-[var(--brand-blue)]/20 bg-[var(--brand-blue)]/10 text-[#28435e]') : (isDark ? 'border border-[var(--brand-rust)]/25 bg-[var(--brand-rust)]/15 text-white' : 'border border-[var(--brand-rust)]/20 bg-[var(--brand-rust)]/10 text-[#6f3f31]')}`}>
+                                                {lesson.is_published ? 'Published' : 'Draft'}
+                                              </span>
+                                              {(lesson.cover_image_url || lesson.video_url) ? (
+                                                <span className={`rounded-full px-2 py-1 text-[9px] font-semibold uppercase ${isActiveLesson ? (isDark ? 'bg-[var(--brand-blue)]/25 text-white' : 'bg-[var(--brand-blue)]/15 text-[#1f2f42]') : isDark ? 'bg-white/10 text-white/80' : 'bg-white'}`}>
+                                                  Media
+                                                </span>
+                                              ) : null}
+                                            </div>
+                                          </div>
+                                        </div>
+                                      </button>
+                                      <div className="flex shrink-0 items-center gap-1">
+                                        <button type="button" onClick={() => beginEditLesson(lesson)} className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase ${outlineBtnClass}`}>
+                                          Edit
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => void deleteLessonFromBuilder(lesson)}
+                                          className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase ${isDark ? 'border-red-400/20 bg-red-400/10 text-red-200' : 'border-red-200 bg-red-50 text-red-700'}`}
+                                        >
+                                          Delete
+                                        </button>
                                       </div>
                                     </div>
                                   </div>
-                                </button>
-
-                                <div className="flex shrink-0 items-center gap-1">
-                                  <button
-                                    type="button"
-                                    onClick={() => beginEditLesson(lesson)}
-                                    className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase ${outlineBtnClass}`}
-                                  >
-                                    Edit
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => void deleteLessonFromBuilder(lesson)}
-                                    className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase ${isDark ? 'border-red-400/20 bg-red-400/10 text-red-200' : 'border-red-200 bg-red-50 text-red-700'}`}
-                                  >
-                                    Delete
-                                  </button>
-                                </div>
-                              </div>
-                            </div>
-                          )
-                        })
+                                )
+                              })
+                            ) : (
+                              <p className={`px-2 py-2 text-xs ${mutedText}`}>No lessons in this module yet.</p>
+                            )}
+                          </div>
+                        ))
                       ) : (
                         <div className={`rounded-[12px] border border-dashed p-4 text-sm ${isDark ? 'border-white/12 text-white/60' : 'border-[var(--line)] text-[var(--muted)]'}`}>
-                          No lessons yet. Create the first lesson to start building the course curriculum.
+                          No lessons yet. Create a module (optional) and add the first lesson.
                         </div>
                       )}
                     </div>
@@ -5468,6 +5218,21 @@ function InstructorDashboardPage() {
                               Published
                             </label>
                           </div>
+                        </div>
+                        <div className="mt-3">
+                          <label className={`mb-1 block text-[11px] font-semibold ${mutedText}`}>Assign to module</label>
+                          <select
+                            value={lessonDraft.course_module_id || ''}
+                            onChange={(e) => setLessonDraft((f: any) => ({ ...f, course_module_id: e.target.value }))}
+                            className={`w-full rounded-xl border px-3 py-2 text-sm ${inputClass}`}
+                          >
+                            <option value="">Unassigned</option>
+                            {builderModules.map((mod: any) => (
+                              <option key={mod.id} value={mod.id}>
+                                {textOf(mod.title, locale) || `Module ${mod.sort_order}`}
+                              </option>
+                            ))}
+                          </select>
                         </div>
                       </div>
 

@@ -14,6 +14,16 @@ export type ApiUser = {
   instructor_profile?: any
 }
 
+export type ApiCourseModule = {
+  id: number
+  course_id?: number
+  sort_order: number
+  title: LocalizedText
+  description?: LocalizedText
+  is_published?: boolean
+  lessons?: ApiLesson[]
+}
+
 export type ApiCourse = {
   id: number
   category_id?: number | null
@@ -42,6 +52,7 @@ export type ApiCourse = {
   instructor?: { id: number; name: string; avatar_url?: string | null; headline?: string | null } | null
   category?: { id: number; slug: string; name: Record<string, string> } | null
   lessons?: ApiLesson[]
+  modules?: ApiCourseModule[]
   reviews?: ApiCourseReview[]
   faqs?: ApiCourseFaq[]
 }
@@ -49,6 +60,7 @@ export type ApiCourse = {
 export type ApiLesson = {
   id: number
   course_id: number
+  course_module_id?: number | null
   sort_order: number
   title: Record<string, string>
   description?: Record<string, string>
@@ -67,6 +79,12 @@ export type ApiLessonProgressItem = {
   completed_percent: number
   is_completed: boolean
   last_watched_at?: string | null
+}
+
+export type ApiCourseAccess = {
+  enrolled: boolean
+  can_learn: boolean
+  reason?: string
 }
 
 export type ApiCourseReview = {
@@ -157,6 +175,20 @@ export type AuthResponse = {
   user: ApiUser
 }
 
+export type LessonProgressPayload = {
+  last_position_seconds: number
+  duration_seconds?: number
+  watched_delta_seconds?: number
+  is_completed?: boolean
+}
+
+export type CourseModulePayload = {
+  title: string | Record<string, string>
+  description?: string | Record<string, string> | null
+  sort_order?: number
+  is_published?: boolean
+}
+
 const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000/api/v1').replace(/\/+$/, '')
 
 export function getApiBase() {
@@ -167,6 +199,38 @@ export function localized(value: LocalizedText, locale: ApiLocale = 'en'): strin
   if (!value) return ''
   if (typeof value === 'string') return value
   return value[locale] || value.en || value.ru || value.ka || ''
+}
+
+export class ApiRequestError extends Error {
+  status: number
+  errors: Record<string, string[]>
+
+  constructor(status: number, message: string, errors: Record<string, string[]> = {}) {
+    super(message)
+    this.name = 'ApiRequestError'
+    this.status = status
+    this.errors = errors
+  }
+}
+
+function normalizeErrors(raw: unknown): Record<string, string[]> {
+  if (!raw || typeof raw !== 'object') return {}
+  const out: Record<string, string[]> = {}
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (Array.isArray(value)) {
+      out[key] = value.filter((v): v is string => typeof v === 'string')
+    } else if (typeof value === 'string') {
+      out[key] = [value]
+    }
+  }
+  return out
+}
+
+function throwApiError(status: number, data: any): never {
+  const errors = normalizeErrors(data?.errors)
+  const firstFieldError = Object.values(errors).flat().find((v) => typeof v === 'string')
+  const message = firstFieldError || data?.message || data?.error || `HTTP ${status}`
+  throw new ApiRequestError(status, message, errors)
 }
 
 type RequestOptions = {
@@ -215,12 +279,11 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
         }
 
         if (xhr.status < 200 || xhr.status >= 300) {
-          const validationError =
-            data?.errors && typeof data.errors === 'object'
-              ? Object.values(data.errors).flat().find((v) => typeof v === 'string')
-              : null
-          const message = validationError || data?.message || data?.error || `HTTP ${xhr.status}`
-          reject(new Error(message))
+          try {
+            throwApiError(xhr.status, data)
+          } catch (err) {
+            reject(err)
+          }
           return
         }
 
@@ -256,12 +319,7 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   }
 
   if (!res.ok) {
-    const validationError =
-      data?.errors && typeof data.errors === 'object'
-        ? Object.values(data.errors).flat().find((v) => typeof v === 'string')
-        : null
-    const message = validationError || data?.message || data?.error || `HTTP ${res.status}`
-    throw new Error(message)
+    throwApiError(res.status, data)
   }
 
   return data as T
@@ -322,9 +380,35 @@ export const api = {
     request<any>(`/me/instructor/courses/${courseId}/lessons/${lessonId}`, { method: 'PUT', token, body: payload }),
   deleteMyLesson: (courseId: number, lessonId: number, token: string) =>
     request<any>(`/me/instructor/courses/${courseId}/lessons/${lessonId}`, { method: 'DELETE', token }),
+
+  createMyModule: (courseId: number, payload: CourseModulePayload, token: string) =>
+    request<{ message?: string; module: ApiCourseModule }>(`/me/instructor/courses/${courseId}/modules`, {
+      method: 'POST',
+      token,
+      body: payload,
+    }),
+  updateMyModule: (courseId: number, moduleId: number, payload: Partial<CourseModulePayload>, token: string) =>
+    request<{ message?: string; module: ApiCourseModule }>(`/me/instructor/courses/${courseId}/modules/${moduleId}`, {
+      method: 'PUT',
+      token,
+      body: payload,
+    }),
+  deleteMyModule: (courseId: number, moduleId: number, token: string) =>
+    request<{ message?: string }>(`/me/instructor/courses/${courseId}/modules/${moduleId}`, { method: 'DELETE', token }),
+
+  courseAccess: async (courseId: number, token: string): Promise<ApiCourseAccess> => {
+    try {
+      return await request<ApiCourseAccess>(`/me/courses/${courseId}/access`, { token })
+    } catch (err) {
+      if (err instanceof ApiRequestError && err.status === 404) {
+        return { enrolled: false, can_learn: false, reason: 'access_endpoint_unavailable' }
+      }
+      throw err
+    }
+  },
   courseLessonProgress: (courseId: number, token: string) =>
     request<{ course_id: number; progress: Record<string, ApiLessonProgressItem> }>(`/me/courses/${courseId}/lesson-progress`, { token }),
-  saveLessonProgress: (lessonId: number, payload: any, token: string) =>
+  saveLessonProgress: (lessonId: number, payload: LessonProgressPayload, token: string) =>
     request<{ message: string; progress: ApiLessonProgressItem }>(`/me/lessons/${lessonId}/progress`, { method: 'PUT', token, body: payload }),
 
   dashboardSummary: (token: string) => request<any>('/dashboard/summary', { token }),
