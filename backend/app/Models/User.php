@@ -79,4 +79,11 @@ class User extends Authenticatable
     {
         return SuperAdmin::isEmail($this->email);
     }
+
+    public function messageThreads()
+    {
+        return $this->belongsToMany(MessageThread::class, 'message_thread_participants', 'user_id', 'thread_id')
+            ->withPivot(['last_read_at'])
+            ->withTimestamps();
+    }
 }

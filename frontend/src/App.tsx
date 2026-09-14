@@ -272,62 +272,6 @@ const browseTopics = [
   { slug: 'offline-workshops', label: 'Offline Workshops' },
 ]
 
-type DemoMessageThread = {
-  id: string
-  title: string
-  course?: string
-  participants: string[]
-  unread: number
-  updatedAt: string
-  messages: Array<{ id: string; author: string; role: 'student' | 'instructor' | 'admin'; text: string; time: string }>
-}
-
-function getDemoThreads(role: 'student' | 'instructor' | 'admin' | string): DemoMessageThread[] {
-  const base: DemoMessageThread[] = [
-    {
-      id: 'th-1',
-      title: 'Homework feedback: Module 2',
-      course: 'Big Win: Growth Marketing Playbook',
-      participants: ['Demo Student', 'Mark Cuban', 'Happytality Admin'],
-      unread: role === 'student' ? 1 : 0,
-      updatedAt: '2m ago',
-      messages: [
-        { id: 'm1', author: 'Demo Student', role: 'student', text: 'I uploaded the assignment. Can you review section 2?', time: '10:14' },
-        { id: 'm2', author: 'Mark Cuban', role: 'instructor', text: 'Received. I will review today and leave comments.', time: '10:21' },
-        { id: 'm3', author: 'Happytality Admin', role: 'admin', text: 'Reminder: attach final PDF to keep it in course history.', time: '10:24' },
-      ],
-    },
-    {
-      id: 'th-2',
-      title: 'Webinar schedule update',
-      course: 'Live Webinar: Sacred Rhythm',
-      participants: ['Registered students', 'Instructor team', 'Admin support'],
-      unread: role === 'instructor' ? 2 : 0,
-      updatedAt: '18m ago',
-      messages: [
-        { id: 'm4', author: 'Happytality Admin', role: 'admin', text: 'Webinar moved to 20:00 Tbilisi time. Notification sent to all learners.', time: '09:40' },
-        { id: 'm5', author: 'Mark Cuban', role: 'instructor', text: 'Confirmed. I will upload an updated agenda trailer.', time: '09:48' },
-      ],
-    },
-    {
-      id: 'th-3',
-      title: 'Payment and enrollment support',
-      course: 'Offline Workshop: Tbilisi Immersion',
-      participants: ['Demo Student', 'Support Admin'],
-      unread: role === 'admin' ? 1 : 0,
-      updatedAt: '1h ago',
-      messages: [
-        { id: 'm6', author: 'Demo Student', role: 'student', text: 'I paid but my enrollment status is still pending.', time: '08:58' },
-        { id: 'm7', author: 'Happytality Admin', role: 'admin', text: 'We are checking the payment callback and will confirm shortly.', time: '09:03' },
-      ],
-    },
-  ]
-
-  if (role === 'student') return base.filter((t) => t.participants.join(' ').includes('Student') || t.id !== 'th-2')
-  if (role === 'instructor') return base.filter((t) => t.id !== 'th-3' || t.course?.includes('Workshop'))
-  return base
-}
-
 function t(locale: ApiLocale, key: string) {
   return dictionary[locale][key] || key
 }
@@ -467,17 +411,29 @@ function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!token) return
 
-    api.me(token)
+    let cancelled = false
+    api
+      .me(token)
       .then((res) => {
+        if (cancelled) return
         setUser(res.user)
         localStorage.setItem('ht_user', JSON.stringify(res.user))
       })
-      .catch(() => {
-        setToken(null)
-        setUser(null)
-        localStorage.removeItem('ht_token')
-        localStorage.removeItem('ht_user')
+      .catch((err) => {
+        if (cancelled) return
+        // Only clear session on explicit auth failures. Aborted/network blips during
+        // SPA transitions must not log the user out.
+        if (err?.status === 401 || err?.status === 403) {
+          setToken(null)
+          setUser(null)
+          localStorage.removeItem('ht_token')
+          localStorage.removeItem('ht_user')
+        }
       })
+
+    return () => {
+      cancelled = true
+    }
   }, [token])
 
   const refreshCart = async () => {
@@ -706,11 +662,30 @@ function AddToCartIconButton({
 }
 
 function Shell() {
-  const { locale, setLocale, theme, setTheme, cart, user, logout } = useApp()
+  const { locale, setLocale, theme, setTheme, cart, user, logout, token } = useApp()
+  const [messagesUnread, setMessagesUnread] = useState(0)
   const navigate = useNavigate()
   const routerNavigate = useRouterNavigate()
   const location = useLocation()
   const [q, setQ] = useState('')
+  useEffect(() => {
+    if (!token || !user) {
+      setMessagesUnread(0)
+      return
+    }
+    let cancelled = false
+    api.messagesUnreadCount(token)
+      .then((res) => {
+        if (!cancelled) setMessagesUnread(Number(res.unread_count || 0))
+      })
+      .catch(() => {
+        if (!cancelled) setMessagesUnread(0)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [token, user?.id])
+
   const browseDetailsRef = useRef<HTMLDetailsElement | null>(null)
   const profileDetailsRef = useRef<HTMLDetailsElement | null>(null)
   const isDark = theme === 'dark'
@@ -884,7 +859,9 @@ function Shell() {
               <svg viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor">
                 <path d="M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v7A2.5 2.5 0 0 1 17.5 16h-7l-4 3v-3H6.5A2.5 2.5 0 0 1 4 13.5z" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
-              <span className="absolute -right-0.5 -top-0.5 rounded-full bg-[var(--brand)] px-1 text-[9px] font-bold text-white">1</span>
+              {messagesUnread > 0 ? (
+                <span className="absolute -right-0.5 -top-0.5 rounded-full bg-[var(--brand)] px-1 text-[9px] font-bold text-white">{messagesUnread}</span>
+              ) : null}
             </Link>
           ) : null}
 
@@ -3456,15 +3433,80 @@ function MessageCenter({
   role: 'student' | 'instructor' | 'admin' | string
   embedded?: boolean
 }) {
-  const { theme } = useApp()
+  const { theme, token, user } = useApp()
   const isDark = theme === 'dark'
-  const threads = useMemo(() => getDemoThreads(role), [role])
-  const [selectedId, setSelectedId] = useState<string>(threads[0]?.id ?? '')
+  const [threads, setThreads] = useState<any[]>([])
+  const [selectedId, setSelectedId] = useState<number | null>(null)
+  const [activeThread, setActiveThread] = useState<any | null>(null)
   const [sortMode, setSortMode] = useState<'newest' | 'unread'>('newest')
-  const activeThread = threads.find((t) => t.id === selectedId) ?? threads[0]
+  const [draft, setDraft] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [sending, setSending] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const loadThreads = async (preferId?: number | null) => {
+    if (!token) return
+    setLoading(true)
+    setError(null)
+    try {
+      const res = await api.messageThreads(token)
+      const list = res.threads || []
+      setThreads(list)
+      const nextId = preferId ?? selectedId ?? list[0]?.id ?? null
+      setSelectedId(nextId)
+      if (nextId) {
+        const detail = await api.messageThread(nextId, token)
+        setActiveThread(detail.thread)
+      } else {
+        setActiveThread(null)
+      }
+    } catch (err: any) {
+      setError(err?.message || 'Failed to load messages')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    void loadThreads()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, role, user?.id])
+
+  const openThread = async (threadId: number) => {
+    if (!token) return
+    setSelectedId(threadId)
+    setError(null)
+    try {
+      const detail = await api.messageThread(threadId, token)
+      setActiveThread(detail.thread)
+      setThreads((prev) => prev.map((t) => (t.id === threadId ? { ...t, unread: 0 } : t)))
+    } catch (err: any) {
+      setError(err?.message || 'Failed to open thread')
+    }
+  }
+
+  const send = async () => {
+    if (!token || !selectedId || !draft.trim() || sending) return
+    setSending(true)
+    setError(null)
+    try {
+      const res = await api.sendMessage(selectedId, draft.trim(), token)
+      setActiveThread(res.thread)
+      setDraft('')
+      setThreads((prev) => {
+        const others = prev.filter((t) => t.id !== res.thread.id)
+        return [{ ...res.thread, messages: undefined }, ...others]
+      })
+    } catch (err: any) {
+      setError(err?.message || 'Failed to send message')
+    } finally {
+      setSending(false)
+    }
+  }
+
   const orderedThreads = [...threads].sort((a, b) => {
     if (sortMode === 'unread') return (b.unread || 0) - (a.unread || 0)
-    return a.id < b.id ? 1 : -1
+    return String(b.updated_at || '') < String(a.updated_at || '') ? -1 : 1
   })
 
   return (
@@ -3484,12 +3526,13 @@ function MessageCenter({
             <option value="unread">Unread first</option>
           </select>
         </div>
+        {loading && !threads.length ? <p className={`text-sm ${isDark ? 'text-white/60' : 'text-[var(--muted)]'}`}>Loading threads...</p> : null}
         <div className="space-y-2">
           {orderedThreads.map((thread) => (
             <button
               key={thread.id}
               type="button"
-              onClick={() => setSelectedId(thread.id)}
+              onClick={() => void openThread(thread.id)}
               className={`w-full rounded-[12px] border p-3 text-left ${
                 activeThread?.id === thread.id
                   ? isDark
@@ -3501,14 +3544,17 @@ function MessageCenter({
               }`}
             >
               <div className="flex items-start justify-between gap-2">
-                <p className="text-sm font-semibold leading-tight">{thread.title}</p>
+                <p className="text-sm font-semibold leading-tight">{thread.subject}</p>
                 {thread.unread ? <span className="rounded-full bg-[var(--brand)] px-2 py-0.5 text-[10px] font-semibold text-white">{thread.unread}</span> : null}
               </div>
-              <p className={`mt-1 line-clamp-1 text-xs ${isDark ? 'text-white/60' : 'text-[var(--muted)]'}`}>{thread.course}</p>
-              <p className={`mt-2 line-clamp-1 text-xs ${isDark ? 'text-white/60' : 'text-[var(--muted)]'}`}>{thread.participants.join(' · ')}</p>
-              <p className={`mt-1 text-[11px] ${isDark ? 'text-white/50' : 'text-[var(--muted)]'}`}>{thread.updatedAt}</p>
+              <p className={`mt-1 line-clamp-1 text-xs ${isDark ? 'text-white/60' : 'text-[var(--muted)]'}`}>{thread.course_title || 'General'}</p>
+              <p className={`mt-2 line-clamp-1 text-xs ${isDark ? 'text-white/60' : 'text-[var(--muted)]'}`}>{(thread.participants || []).map((p: any) => p.name).join(' · ')}</p>
+              <p className={`mt-1 text-[11px] ${isDark ? 'text-white/50' : 'text-[var(--muted)]'}`}>{thread.updated_at ? new Date(thread.updated_at).toLocaleString() : ''}</p>
             </button>
           ))}
+          {!loading && !orderedThreads.length ? (
+            <p className={`text-sm ${isDark ? 'text-white/60' : 'text-[var(--muted)]'}`}>No conversations yet.</p>
+          ) : null}
         </div>
       </div>
 
@@ -3518,56 +3564,56 @@ function MessageCenter({
             <div className="border-b border-[var(--line)] p-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <p className="text-lg font-bold">{activeThread.title}</p>
-                  <p className={`mt-1 text-xs ${isDark ? 'text-white/60' : 'text-[var(--muted)]'}`}>{activeThread.course} · {activeThread.participants.join(' · ')}</p>
-                </div>
-                <div className="flex gap-2 text-xs">
-                  <button type="button" className={`rounded-full border px-3 py-2 ${isDark ? 'border-white/12 bg-white/5' : 'border-[var(--line)]'}`}>Q&A</button>
-                  <button type="button" className={`rounded-full border px-3 py-2 ${isDark ? 'border-white/12 bg-white/5' : 'border-[var(--line)]'}`}>Assignments</button>
-                  <button type="button" className={`rounded-full border px-3 py-2 ${isDark ? 'border-white/12 bg-white/5' : 'border-[var(--line)]'}`}>Escalate to admin</button>
+                  <p className="text-lg font-bold">{activeThread.subject}</p>
+                  <p className={`mt-1 text-xs ${isDark ? 'text-white/60' : 'text-[var(--muted)]'}`}>
+                    {activeThread.course_title || 'General'} · {(activeThread.participants || []).map((p: any) => p.name).join(' · ')}
+                  </p>
                 </div>
               </div>
             </div>
-            <div className="space-y-3 p-4">
-              {activeThread.messages.map((msg) => {
-                const isMe =
-                  (role === 'student' && msg.role === 'student') ||
-                  (role === 'instructor' && msg.role === 'instructor') ||
-                  (role === 'admin' && msg.role === 'admin')
+            <div className="max-h-[420px] space-y-3 overflow-y-auto p-4">
+              {(activeThread.messages || []).map((msg: any) => {
+                const isMe = Number(msg.user?.id) === Number(user?.id)
                 return (
                   <div key={msg.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
                     <div className={`max-w-[85%] rounded-[14px] border px-3 py-2 ${isMe ? (isDark ? 'border-white bg-white text-black' : 'border-black bg-black text-white') : isDark ? 'border-white/10 bg-white/5 text-white' : 'border-[var(--line)] bg-[var(--paper-2)]'}`}>
                       <p className={`text-[11px] font-semibold uppercase tracking-[0.12em] ${isMe ? (isDark ? 'text-black/65' : 'text-white/75') : isDark ? 'text-white/55' : 'text-[var(--muted)]'}`}>
-                        {msg.author} · {msg.role}
+                        {msg.user?.name || 'User'} · {msg.user?.role || role}
                       </p>
-                      <p className="mt-1 text-sm leading-6">{msg.text}</p>
-                      <p className={`mt-1 text-[11px] ${isMe ? (isDark ? 'text-black/60' : 'text-white/70') : isDark ? 'text-white/50' : 'text-[var(--muted)]'}`}>{msg.time}</p>
+                      <p className="mt-1 text-sm leading-6">{msg.body}</p>
+                      <p className={`mt-1 text-[11px] ${isMe ? (isDark ? 'text-black/60' : 'text-white/70') : isDark ? 'text-white/50' : 'text-[var(--muted)]'}`}>
+                        {msg.created_at ? new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
+                      </p>
                     </div>
                   </div>
                 )
               })}
             </div>
             <div className="border-t border-[var(--line)] p-4">
+              {error ? <p className="mb-2 text-sm text-red-500">{error}</p> : null}
               <div className={`rounded-[14px] border p-3 ${isDark ? 'border-white/10 bg-white/5' : 'border-[var(--line)] bg-[var(--paper-2)]'}`}>
                 <textarea
                   rows={3}
-                  placeholder="Write a message (MVP UI; backend realtime/thread persistence next step)"
+                  value={draft}
+                  onChange={(e) => setDraft(e.target.value)}
+                  placeholder="Write a message..."
                   className={`w-full resize-none bg-transparent text-sm outline-none ${isDark ? 'text-white placeholder:text-white/40' : 'placeholder:text-[var(--muted)]'}`}
                 />
-                <div className="mt-2 flex items-center justify-between gap-3">
-                  <div className="flex gap-2 text-xs">
-                    <button type="button" className={`rounded-full border px-3 py-2 ${isDark ? 'border-white/12 bg-white/5 text-white' : 'border-[var(--line)] bg-white'}`}>Attach</button>
-                    <button type="button" className={`rounded-full border px-3 py-2 ${isDark ? 'border-white/12 bg-white/5 text-white' : 'border-[var(--line)] bg-white'}`}>Homework</button>
-                  </div>
-                  <button type="button" className={`rounded-full px-4 py-2 text-xs font-semibold uppercase tracking-[0.14em] ${isDark ? 'bg-white text-black' : 'bg-black text-white'}`}>
-                    Send
+                <div className="mt-2 flex items-center justify-end gap-3">
+                  <button
+                    type="button"
+                    disabled={sending || !draft.trim()}
+                    onClick={() => void send()}
+                    className={`rounded-full px-4 py-2 text-xs font-semibold uppercase tracking-[0.14em] disabled:opacity-50 ${isDark ? 'bg-white text-black' : 'bg-black text-white'}`}
+                  >
+                    {sending ? 'Sending...' : 'Send'}
                   </button>
                 </div>
               </div>
             </div>
           </>
         ) : (
-          <div className={`p-6 text-sm ${isDark ? 'text-white/60' : 'text-[var(--muted)]'}`}>No messages yet.</div>
+          <div className={`p-6 text-sm ${isDark ? 'text-white/60' : 'text-[var(--muted)]'}`}>{loading ? 'Loading...' : 'No messages yet.'}</div>
         )}
       </div>
     </div>

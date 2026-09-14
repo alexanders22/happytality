@@ -182,6 +182,35 @@ export type LessonProgressPayload = {
   is_completed?: boolean
 }
 
+export type ApiMessageUser = {
+  id: number
+  name: string
+  role: string
+}
+
+export type ApiMessage = {
+  id: number
+  thread_id: number
+  body: string
+  created_at?: string | null
+  user: ApiMessageUser | null
+}
+
+export type ApiMessageThread = {
+  id: number
+  subject: string
+  course_title?: string | null
+  participants: ApiMessageUser[]
+  unread: number
+  updated_at?: string | null
+  last_message?: ApiMessage | null
+  messages?: ApiMessage[]
+}
+
+export type ApiMessageThreadDetail = ApiMessageThread & {
+  messages: ApiMessage[]
+}
+
 export type CourseModulePayload = {
   title: string | Record<string, string>
   description?: string | Record<string, string> | null
@@ -410,6 +439,17 @@ export const api = {
     request<{ course_id: number; progress: Record<string, ApiLessonProgressItem> }>(`/me/courses/${courseId}/lesson-progress`, { token }),
   saveLessonProgress: (lessonId: number, payload: LessonProgressPayload, token: string) =>
     request<{ message: string; progress: ApiLessonProgressItem }>(`/me/lessons/${lessonId}/progress`, { method: 'PUT', token, body: payload }),
+
+  messagesUnreadCount: (token: string) => request<{ unread_count: number }>('/me/messages/unread-count', { token }),
+  messageThreads: (token: string) =>
+    request<{ threads: ApiMessageThread[]; unread_count: number }>('/me/messages/threads', { token }),
+  messageThread: (threadId: number, token: string) =>
+    request<{ thread: ApiMessageThreadDetail; unread_count: number }>(`/me/messages/threads/${threadId}`, { token }),
+  sendMessage: (threadId: number, body: string, token: string) =>
+    request<{ message: ApiMessage; thread: ApiMessageThreadDetail; unread_count: number }>(
+      `/me/messages/threads/${threadId}/messages`,
+      { method: 'POST', token, body: { body } },
+    ),
 
   dashboardSummary: (token: string) => request<any>('/dashboard/summary', { token }),
 
