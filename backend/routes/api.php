@@ -9,6 +9,7 @@ use App\Http\Controllers\Api\InstructorController;
 use App\Http\Controllers\Api\InstructorCourseController;
 use App\Http\Controllers\Api\LandingController;
 use App\Http\Controllers\Api\LessonProgressController;
+use App\Http\Controllers\Api\MessageController;
 use App\Http\Controllers\Api\MetaController;
 use App\Http\Controllers\Api\ProfileController;
 use App\Http\Controllers\Api\SearchController;
@@ -49,6 +50,10 @@ Route::prefix('v1')->group(function (): void {
         Route::put('/me/lessons/{lesson}/progress', [LessonProgressController::class, 'upsert']);
         Route::get('/me/courses/{course}/access', [LessonProgressController::class, 'access']);
         Route::post('/checkout/create', [CheckoutController::class, 'create']);
+        Route::get('/me/messages/unread-count', [MessageController::class, 'unreadCount']);
+        Route::get('/me/messages/threads', [MessageController::class, 'index']);
+        Route::get('/me/messages/threads/{thread}', [MessageController::class, 'show']);
+        Route::post('/me/messages/threads/{thread}/messages', [MessageController::class, 'storeMessage']);
         Route::get('/me/profile', [ProfileController::class, 'user']);
         Route::put('/me/profile', [ProfileController::class, 'updateUser']);
         Route::get('/me/instructor-profile', [ProfileController::class, 'instructor']);

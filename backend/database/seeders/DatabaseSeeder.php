@@ -74,7 +74,7 @@ class DatabaseSeeder extends Seeder
             'display_name' => 'Mark Cuban',
             'status' => 'approved',
             'hero_image_url' => 'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?auto=format&fit=crop&w=1600&q=80',
-            'promo_video_url' => 'https://example.com/promo.mp4',
+            'promo_video_url' => 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4',
             'bio' => [
                 'en' => 'Build businesses that scale with clarity and repeatable systems.',
                 'ka' => 'ააშენეთ ბიზნესები, რომლებიც იზრდება მკაფიო სისტემებით.',
@@ -158,7 +158,7 @@ class DatabaseSeeder extends Seeder
             'language_codes' => ['en', 'ka', 'ru'],
             'cover_image_url' => 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=1200&q=80',
             'trailer_image_url' => 'https://images.unsplash.com/photo-1556157382-97eda2d62296?auto=format&fit=crop&w=1200&q=80',
-            'promo_video_url' => 'https://example.com/course-trailer.mp4',
+            'promo_video_url' => 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4',
             'price_amount' => 149.00,
             'currency' => 'USD',
             'sale_price_amount' => 99.00,
@@ -181,7 +181,7 @@ class DatabaseSeeder extends Seeder
                 'title' => ['en' => $title, 'ka' => $title, 'ru' => $title],
                 'description' => ['en' => $desc, 'ka' => $desc, 'ru' => $desc],
                 'cover_image_url' => 'https://images.unsplash.com/photo-1483985988355-763728e1935b?auto=format&fit=crop&w=900&q=80',
-                'video_url' => 'https://example.com/lesson-'.($index + 1).'.mp4',
+                'video_url' => ['https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4','https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4','https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4'][$index % 3],
                 'duration_seconds' => 1200 + ($index * 300),
                 'is_preview' => $preview,
                 'is_published' => true,
@@ -339,7 +339,7 @@ class DatabaseSeeder extends Seeder
                             'ru' => 'Lesson summary, practical focus, and key learning objective.',
                         ],
                         'cover_image_url' => $coverPool[($idx + $lessonIndex) % count($coverPool)],
-                        'video_url' => "https://example.com/{$slug}-lesson-{$lessonIndex}.mp4",
+                        'video_url' => collect(['https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4','https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4','https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4','https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4'])->get((\$lessonIndex - 1) % 4),
                         'duration_seconds' => 900 + ($lessonIndex * 240),
                         'is_preview' => $lessonIndex === 1,
                         'is_published' => true,
@@ -402,5 +402,29 @@ class DatabaseSeeder extends Seeder
                 );
             }
         }
+
+        // Messaging MVP seeds
+        $studentUser = \App\Models\User::where('email', 'student@happytality.local')->first();
+        $instructorUser = \App\Models\User::where('email', 'instructor@happytality.local')->first();
+        $adminUser = \App\Models\User::where('email', 'admin@happytality.local')->first();
+        if ($studentUser && $instructorUser && $adminUser) {
+            $thread = \App\Models\MessageThread::create([
+                'subject' => 'Homework feedback: Module 2',
+                'course_title' => 'Big Win: Growth Marketing Playbook',
+                'created_by' => $studentUser->id,
+                'last_message_at' => now()->subMinutes(8),
+            ]);
+            $thread->participants()->attach([
+                $studentUser->id => ['last_read_at' => now()->subMinutes(20)],
+                $instructorUser->id => ['last_read_at' => now()],
+                $adminUser->id => ['last_read_at' => now()],
+            ]);
+            \App\Models\Message::insert([
+                ['thread_id' => $thread->id, 'user_id' => $studentUser->id, 'body' => 'I uploaded the assignment. Can you review section 2?', 'created_at' => now()->subMinutes(20), 'updated_at' => now()->subMinutes(20)],
+                ['thread_id' => $thread->id, 'user_id' => $instructorUser->id, 'body' => 'Received. I will review today and leave comments.', 'created_at' => now()->subMinutes(12), 'updated_at' => now()->subMinutes(12)],
+                ['thread_id' => $thread->id, 'user_id' => $adminUser->id, 'body' => 'Reminder: attach final PDF to keep it in course history.', 'created_at' => now()->subMinutes(8), 'updated_at' => now()->subMinutes(8)],
+            ]);
+        }
+
     }
 }

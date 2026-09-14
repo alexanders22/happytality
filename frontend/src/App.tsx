@@ -272,62 +272,6 @@ const browseTopics = [
   { slug: 'offline-workshops', label: 'Offline Workshops' },
 ]
 
-type DemoMessageThread = {
-  id: string
-  title: string
-  course?: string
-  participants: string[]
-  unread: number
-  updatedAt: string
-  messages: Array<{ id: string; author: string; role: 'student' | 'instructor' | 'admin'; text: string; time: string }>
-}
-
-function getDemoThreads(role: 'student' | 'instructor' | 'admin' | string): DemoMessageThread[] {
-  const base: DemoMessageThread[] = [
-    {
-      id: 'th-1',
-      title: 'Homework feedback: Module 2',
-      course: 'Big Win: Growth Marketing Playbook',
-      participants: ['Demo Student', 'Mark Cuban', 'Happytality Admin'],
-      unread: role === 'student' ? 1 : 0,
-      updatedAt: '2m ago',
-      messages: [
-        { id: 'm1', author: 'Demo Student', role: 'student', text: 'I uploaded the assignment. Can you review section 2?', time: '10:14' },
-        { id: 'm2', author: 'Mark Cuban', role: 'instructor', text: 'Received. I will review today and leave comments.', time: '10:21' },
-        { id: 'm3', author: 'Happytality Admin', role: 'admin', text: 'Reminder: attach final PDF to keep it in course history.', time: '10:24' },
-      ],
-    },
-    {
-      id: 'th-2',
-      title: 'Webinar schedule update',
-      course: 'Live Webinar: Sacred Rhythm',
-      participants: ['Registered students', 'Instructor team', 'Admin support'],
-      unread: role === 'instructor' ? 2 : 0,
-      updatedAt: '18m ago',
-      messages: [
-        { id: 'm4', author: 'Happytality Admin', role: 'admin', text: 'Webinar moved to 20:00 Tbilisi time. Notification sent to all learners.', time: '09:40' },
-        { id: 'm5', author: 'Mark Cuban', role: 'instructor', text: 'Confirmed. I will upload an updated agenda trailer.', time: '09:48' },
-      ],
-    },
-    {
-      id: 'th-3',
-      title: 'Payment and enrollment support',
-      course: 'Offline Workshop: Tbilisi Immersion',
-      participants: ['Demo Student', 'Support Admin'],
-      unread: role === 'admin' ? 1 : 0,
-      updatedAt: '1h ago',
-      messages: [
-        { id: 'm6', author: 'Demo Student', role: 'student', text: 'I paid but my enrollment status is still pending.', time: '08:58' },
-        { id: 'm7', author: 'Happytality Admin', role: 'admin', text: 'We are checking the payment callback and will confirm shortly.', time: '09:03' },
-      ],
-    },
-  ]
-
-  if (role === 'student') return base.filter((t) => t.participants.join(' ').includes('Student') || t.id !== 'th-2')
-  if (role === 'instructor') return base.filter((t) => t.id !== 'th-3' || t.course?.includes('Workshop'))
-  return base
-}
-
 function t(locale: ApiLocale, key: string) {
   return dictionary[locale][key] || key
 }
@@ -467,17 +411,29 @@ function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!token) return
 
-    api.me(token)
+    let cancelled = false
+    api
+      .me(token)
       .then((res) => {
+        if (cancelled) return
         setUser(res.user)
         localStorage.setItem('ht_user', JSON.stringify(res.user))
       })
-      .catch(() => {
-        setToken(null)
-        setUser(null)
-        localStorage.removeItem('ht_token')
-        localStorage.removeItem('ht_user')
+      .catch((err) => {
+        if (cancelled) return
+        // Only clear session on explicit auth failures. Aborted/network blips during
+        // SPA transitions must not log the user out.
+        if (err?.status === 401 || err?.status === 403) {
+          setToken(null)
+          setUser(null)
+          localStorage.removeItem('ht_token')
+          localStorage.removeItem('ht_user')
+        }
       })
+
+    return () => {
+      cancelled = true
+    }
   }, [token])
 
   const refreshCart = async () => {
@@ -706,17 +662,41 @@ function AddToCartIconButton({
 }
 
 function Shell() {
-  const { locale, setLocale, theme, setTheme, cart, user, logout } = useApp()
+  const { locale, setLocale, theme, setTheme, cart, user, logout, token } = useApp()
+  const [messagesUnread, setMessagesUnread] = useState(0)
   const navigate = useNavigate()
   const routerNavigate = useRouterNavigate()
   const location = useLocation()
   const [q, setQ] = useState('')
+  useEffect(() => {
+    if (!token || !user) {
+      setMessagesUnread(0)
+      return
+    }
+    let cancelled = false
+    api.messagesUnreadCount(token)
+      .then((res) => {
+        if (!cancelled) setMessagesUnread(Number(res.unread_count || 0))
+      })
+      .catch(() => {
+        if (!cancelled) setMessagesUnread(0)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [token, user?.id])
+
   const browseDetailsRef = useRef<HTMLDetailsElement | null>(null)
   const profileDetailsRef = useRef<HTMLDetailsElement | null>(null)
   const isDark = theme === 'dark'
+  // Shared header control system: one height (40px), one radius (full), aligned chrome.
   const headerControl = isDark ? 'border border-white/15 bg-white/5 text-white' : 'border border-[var(--line)] bg-white'
   const headerGhostControl = isDark ? 'border border-white/15 bg-transparent text-white' : 'border border-[var(--line)] bg-white'
   const headerMutedText = isDark ? 'text-white/70' : 'text-[var(--muted)]'
+  const headerH = 'h-10'
+  const headerChip = `${headerH} box-border inline-flex items-center rounded-full px-3 text-xs font-semibold leading-none ${headerControl}`
+  const headerIcon = `${headerH} w-10 box-border inline-grid place-items-center rounded-full ${headerControl}`
+  const headerCta = `${headerH} box-border inline-flex items-center rounded-full px-4 text-xs font-semibold leading-none ${headerGhostControl}`
 
   const switchLocale = (nextLocale: ApiLocale) => {
     setLocale(nextLocale)
@@ -766,11 +746,7 @@ function Shell() {
           </Link>
 
           <details ref={browseDetailsRef} className="relative hidden md:block">
-            <summary
-              className={`list-none cursor-pointer rounded-full px-3 py-2 text-xs font-semibold ${
-                isDark ? 'border border-white/15 bg-white/5 text-white' : 'border border-[var(--line)] bg-white'
-              }`}
-            >
+            <summary className={`list-none cursor-pointer ${headerChip}`}>
               Browse
             </summary>
             <div
@@ -844,7 +820,7 @@ function Shell() {
 
         <div className="flex items-center gap-2 sm:gap-3">
           <form
-            className={`hidden items-center gap-2 rounded-full px-3 py-2 lg:flex ${headerControl}`}
+            className={`hidden items-center gap-2 rounded-full px-3 lg:flex ${headerH} box-border ${headerControl}`}
             onSubmit={(e) => {
               e.preventDefault()
               navigate(`/courses?q=${encodeURIComponent(q)}`)
@@ -866,7 +842,7 @@ function Shell() {
             <select
               value={locale}
               onChange={(e) => switchLocale(e.target.value as ApiLocale)}
-              className={`rounded-full px-2 py-2 text-xs hidden sm:block ${headerControl}`}
+              className={`hidden appearance-none sm:inline-flex ${headerChip} pr-7`}
             >
               <option value="en">EN</option>
               <option value="ka">KA</option>
@@ -877,19 +853,21 @@ function Shell() {
           {user ? (
             <Link
               to="/messages"
-              className={`relative hidden sm:grid size-10 place-items-center rounded-full ${headerControl}`}
+              className={`relative hidden sm:inline-grid ${headerIcon}`}
               title="Messages"
             >
               <svg viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor">
                 <path d="M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v7A2.5 2.5 0 0 1 17.5 16h-7l-4 3v-3H6.5A2.5 2.5 0 0 1 4 13.5z" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
-              <span className="absolute -right-0.5 -top-0.5 rounded-full bg-[var(--brand)] px-1 text-[9px] font-bold text-white">1</span>
+              {messagesUnread > 0 ? (
+                <span className="absolute -right-0.5 -top-0.5 rounded-full bg-[var(--brand)] px-1 text-[9px] font-bold text-white">{messagesUnread}</span>
+              ) : null}
             </Link>
           ) : null}
 
           <button
             type="button"
-            className={`relative hidden sm:grid size-10 place-items-center rounded-full ${headerControl}`}
+            className={`relative hidden sm:inline-grid ${headerIcon}`}
             title="Notifications"
           >
             <svg viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor">
@@ -901,7 +879,7 @@ function Shell() {
           <button
             type="button"
             onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-            className={`grid size-10 place-items-center rounded-full ${headerControl}`}
+            className={`inline-grid ${headerIcon}`}
             title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
           >
             {theme === 'dark' ? '☀' : '☾'}
@@ -909,7 +887,7 @@ function Shell() {
 
           <Link
             to="/cart"
-            className={`relative grid size-10 place-items-center rounded-full ${headerControl}`}
+            className={`relative inline-grid ${headerIcon}`}
             title={t(locale, 'cart')}
             aria-label={t(locale, 'cart')}
           >
@@ -1021,7 +999,7 @@ function Shell() {
               </div>
             </details>
           ) : (
-            <Link to="/auth/login" className={`rounded-full px-3 py-2 text-xs ${headerGhostControl}`}>
+            <Link to="/auth/login" className={headerCta}>
               {t(locale, 'auth')}
             </Link>
           )}
@@ -3168,11 +3146,20 @@ function AuthScreen({ mode }: { mode: 'login' | 'register' }) {
   const authHeroBg = isLogin
     ? 'linear-gradient(140deg, rgba(123,112,106,0.88) 0%, #10131a 45%, rgba(58,111,149,0.55) 100%)'
     : 'linear-gradient(140deg, rgba(139,67,53,0.9) 0%, #11131b 42%, rgba(77,102,49,0.52) 100%)'
-  const inputBase = isDark
+  const controlH = 'h-11'
+  const controlRadius = 'rounded-xl'
+  const inputTone = isDark
     ? 'border-white/12 bg-white/5 text-white placeholder:text-white/35 focus:border-[var(--brand-blue)]'
     : 'border-[var(--line)] bg-[var(--paper-2)] focus:border-[var(--brand-blue)]'
+  const controlClass = `${controlH} box-border w-full ${controlRadius} border px-4 text-sm leading-none outline-none ${inputTone}`
   const fieldHint = (key: string) =>
     fieldError(key) ? <p className="mt-1 text-xs text-red-500">{fieldError(key)}</p> : null
+
+  const demoAccounts = [
+    { role: 'Student', email: 'student@happytality.local', password: 'Student12345!' },
+    { role: 'Instructor', email: 'instructor@happytality.local', password: 'Instructor12345!' },
+    { role: 'Admin', email: 'admin@happytality.local', password: 'Admin12345!' },
+  ]
 
   return (
     <>
@@ -3186,10 +3173,10 @@ function AuthScreen({ mode }: { mode: 'login' | 'register' }) {
           <div className="absolute right-20 top-20 h-32 w-32 rounded-full bg-[var(--brand-olive)]/20 blur-2xl" />
           <div className="relative z-10">
             <div className="flex items-center justify-between gap-3">
-              <Link to="/" className="rounded-full border border-white/15 bg-white/5 px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em]">
+              <Link to="/" className="inline-flex h-10 items-center rounded-full border border-white/15 bg-white/5 px-4 text-xs font-semibold uppercase tracking-[0.16em]">
                 Happytality
               </Link>
-              <div className="rounded-full bg-white/10 px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.16em]">
+              <div className="inline-flex h-10 items-center rounded-full bg-white/10 px-4 text-[10px] font-semibold uppercase tracking-[0.16em]">
                 {isLogin ? 'Member access' : 'Creator onboarding'}
               </div>
             </div>
@@ -3221,37 +3208,14 @@ function AuthScreen({ mode }: { mode: 'login' | 'register' }) {
               </div>
             </div>
 
-            <div className="mt-8 grid gap-3 sm:grid-cols-[1.1fr_0.9fr]">
-              <div className={`overflow-hidden rounded-[20px] border p-3 ${isLogin ? 'border-white/10 bg-white/5' : 'border-[var(--brand-olive)]/20 bg-black/15'}`}>
-                <img
-                  src={heroImages[0]}
-                  alt="Learning visual"
-                  className="h-[190px] w-full rounded-[14px] object-cover"
-                />
-                <div className={`mt-3 rounded-[14px] border p-3 ${isLogin ? 'border-white/10 bg-black/20' : 'border-[var(--brand-rust)]/20 bg-[var(--brand-rust)]/8'}`}>
-                  <p className="text-sm font-semibold">Your workspace</p>
-                  <p className="mt-1 text-xs text-white/70">
-                    Dashboard, messages, payments, saved courses, reminders and progress tracking.
+            <div className="mt-8 rounded-[20px] border border-white/10 bg-white/5 p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-white/70">Demo accounts</p>
+              <div className="mt-3 space-y-2 text-xs text-white/85">
+                {demoAccounts.map((account) => (
+                  <p key={account.email}>
+                    <span className="font-semibold text-white">{account.role}:</span> {account.email} / {account.password}
                   </p>
-                </div>
-              </div>
-              <div className="space-y-3">
-                <div className={`rounded-[20px] border p-4 ${isLogin ? 'border-white/10 bg-white/5' : 'border-[var(--brand-blue)]/25 bg-[var(--brand-blue)]/10'}`}>
-                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-white/70">Roles</p>
-                  <div className="mt-3 space-y-2 text-sm">
-                    <div className={`rounded-[10px] px-3 py-2 ${isLogin ? 'bg-white/10' : 'bg-[var(--brand-blue)]/18'}`}>Student dashboard</div>
-                    <div className={`rounded-[10px] px-3 py-2 ${isLogin ? 'bg-white/10' : 'bg-[var(--brand-rust)]/16'}`}>Instructor dashboard</div>
-                    <div className={`rounded-[10px] px-3 py-2 ${isLogin ? 'bg-white/10' : 'bg-[var(--brand-olive)]/16'}`}>Admin control panel</div>
-                  </div>
-                </div>
-                <div className={`rounded-[20px] border p-4 ${isLogin ? 'border-white/10 bg-white/5' : 'border-[var(--brand-taupe)]/20 bg-[var(--brand-taupe)]/10'}`}>
-                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-white/70">Demo accounts</p>
-                  <div className="mt-3 space-y-2 text-xs text-white/80">
-                    <p>admin@happytality.local · Admin12345!</p>
-                    <p>instructor@happytality.local · Instructor12345!</p>
-                    <p>student@happytality.local · Student12345!</p>
-                  </div>
-                </div>
+                ))}
               </div>
             </div>
           </div>
@@ -3263,8 +3227,8 @@ function AuthScreen({ mode }: { mode: 'login' | 'register' }) {
               isDark ? 'border-white/10 bg-[#0b1018]/92 text-white backdrop-blur-xl' : 'border-[var(--line)] bg-white'
             }`}
           >
-            <div className="flex items-center justify-between gap-3">
-              <div>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="min-w-0">
                 <p className={`text-[10px] font-semibold tracking-[0.18em] uppercase ${isDark ? 'text-white/55' : 'text-[var(--muted)]'}`}>
                   {isLogin ? 'Sign in' : 'Sign up'}
                 </p>
@@ -3275,16 +3239,16 @@ function AuthScreen({ mode }: { mode: 'login' | 'register' }) {
                   {isLogin ? 'Access your dashboard and continue your learning.' : 'Choose a role and start using the platform.'}
                 </p>
               </div>
-              <div className={`hidden sm:flex rounded-full p-1 ${isDark ? 'border border-white/10 bg-white/5' : 'border border-[var(--line)] bg-[var(--paper-2)]'}`}>
+              <div className={`inline-flex h-10 items-center rounded-full p-1 ${isDark ? 'border border-white/10 bg-white/5' : 'border border-[var(--line)] bg-[var(--paper-2)]'}`}>
                 <Link
                   to="/auth/login"
-                  className={`rounded-full px-3 py-2 text-xs font-semibold ${isLogin ? 'bg-[var(--brand-blue)] text-white' : isDark ? 'text-white/80' : ''}`}
+                  className={`inline-flex h-8 items-center rounded-full px-3 text-xs font-semibold ${isLogin ? 'bg-[var(--brand-blue)] text-white' : isDark ? 'text-white/80' : 'text-[var(--muted)]'}`}
                 >
                   Login
                 </Link>
                 <Link
                   to="/auth/register"
-                  className={`rounded-full px-3 py-2 text-xs font-semibold ${!isLogin ? 'bg-[var(--brand-rust)] text-white' : isDark ? 'text-white/80' : ''}`}
+                  className={`inline-flex h-8 items-center rounded-full px-3 text-xs font-semibold ${!isLogin ? 'bg-[var(--brand-rust)] text-white' : isDark ? 'text-white/80' : 'text-[var(--muted)]'}`}
                 >
                   Register
                 </Link>
@@ -3298,7 +3262,7 @@ function AuthScreen({ mode }: { mode: 'login' | 'register' }) {
                 setFieldErrors({})
                 setInfo('Google sign-in UI is added. Backend OAuth redirect/callback endpoint is the next step.')
               }}
-              className={`mt-6 flex w-full items-center justify-center gap-2 rounded-[14px] border px-4 py-3 text-sm font-semibold ${
+              className={`${controlH} mt-6 flex w-full items-center justify-center gap-2 ${controlRadius} border px-4 text-sm font-semibold ${
                 isDark
                   ? 'border-white/15 bg-white/5 text-white hover:bg-white/10'
                   : 'border-[var(--line)] bg-white hover:bg-[var(--brand-cream)]'
@@ -3314,26 +3278,26 @@ function AuthScreen({ mode }: { mode: 'login' | 'register' }) {
               <div className={`h-px flex-1 ${isDark ? 'bg-white/10' : 'bg-[var(--line)]'}`} />
             </div>
 
-            <form onSubmit={submit} className="grid gap-3 sm:grid-cols-2">
+            <form onSubmit={submit} className="grid gap-3">
               {!isLogin ? (
-                <div className="sm:col-span-1">
+                <div>
                   <input
                     value={form.name}
                     onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
                     placeholder="Full name"
-                    className={`w-full rounded-[14px] border px-4 py-3 text-sm outline-none ${inputBase} ${fieldError('name') ? 'border-red-400' : ''}`}
+                    className={`${controlClass} ${fieldError('name') ? 'border-red-400' : ''}`}
                   />
                   {fieldHint('name')}
                 </div>
               ) : null}
 
-              <div className={isLogin ? 'sm:col-span-2' : ''}>
+              <div>
                 <input
                   value={form.email}
                   onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
                   placeholder="Email address"
                   type="email"
-                  className={`w-full rounded-[14px] border px-4 py-3 text-sm outline-none ${inputBase} ${fieldError('email') ? 'border-red-400' : ''}`}
+                  className={`${controlClass} ${fieldError('email') ? 'border-red-400' : ''}`}
                 />
                 {fieldHint('email')}
               </div>
@@ -3344,88 +3308,69 @@ function AuthScreen({ mode }: { mode: 'login' | 'register' }) {
                   value={form.password}
                   onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
                   placeholder="Password"
-                  className={`w-full rounded-[14px] border px-4 py-3 text-sm outline-none ${inputBase} ${fieldError('password') ? 'border-red-400' : ''}`}
+                  className={`${controlClass} ${fieldError('password') ? 'border-red-400' : ''}`}
                 />
                 {fieldHint('password')}
+                {isLogin ? (
+                  <div className="mt-2 flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => setInfo('Password reset is not wired yet. Use a demo account below for local testing.')}
+                      className={`text-xs font-medium underline-offset-2 hover:underline ${isDark ? 'text-white/70 hover:text-white' : 'text-[var(--muted)] hover:text-black'}`}
+                    >
+                      Forgot password?
+                    </button>
+                  </div>
+                ) : null}
               </div>
 
               {!isLogin ? (
-                <div>
-                  <input
-                    type="password"
-                    value={form.password_confirmation}
-                    onChange={(e) => setForm((f) => ({ ...f, password_confirmation: e.target.value }))}
-                    placeholder="Confirm password"
-                    className={`w-full rounded-[14px] border px-4 py-3 text-sm outline-none ${inputBase} ${fieldError('password_confirmation') ? 'border-red-400' : ''}`}
-                  />
-                  {fieldHint('password_confirmation')}
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  className={`rounded-[14px] border px-4 py-3 text-sm font-semibold ${
-                    isDark ? 'border-white/15 bg-white/5 text-white hover:bg-white/10' : 'border-[var(--line)] bg-white hover:bg-[var(--paper-2)]'
-                  }`}
-                >
-                  Forgot password
-                </button>
-              )}
-
-              {!isLogin ? (
-                <div className="sm:col-span-2 grid gap-3 sm:grid-cols-[1fr_1fr]">
+                <>
+                  <div>
+                    <input
+                      type="password"
+                      value={form.password_confirmation}
+                      onChange={(e) => setForm((f) => ({ ...f, password_confirmation: e.target.value }))}
+                      placeholder="Confirm password"
+                      className={`${controlClass} ${fieldError('password_confirmation') ? 'border-red-400' : ''}`}
+                    />
+                    {fieldHint('password_confirmation')}
+                  </div>
                   <div>
                     <select
                       value={form.role}
                       onChange={(e) => setForm((f) => ({ ...f, role: e.target.value as 'student' | 'instructor' }))}
-                      className={`w-full rounded-[14px] border px-4 py-3 text-sm outline-none ${inputBase} ${fieldError('role') ? 'border-red-400' : ''}`}
+                      className={`appearance-none ${controlClass} ${fieldError('role') ? 'border-red-400' : ''}`}
                     >
                       <option value="student">Student</option>
                       <option value="instructor">Instructor</option>
                     </select>
                     {fieldHint('role')}
                   </div>
-                  <div className={`rounded-[14px] border px-4 py-3 text-sm ${isDark ? 'border-white/12 bg-white/5 text-white/70' : 'border-[var(--line)] bg-[var(--paper-2)] text-[var(--muted)]'}`}>
-                    Language: {locale.toUpperCase()}
-                  </div>
-                </div>
+                </>
               ) : null}
 
-              {error ? <p className="sm:col-span-2 text-sm text-red-600">{error}</p> : null}
-              {info ? <p className={`sm:col-span-2 text-sm ${isDark ? 'text-white/65' : 'text-[var(--muted)]'}`}>{info}</p> : null}
+              {error ? <p className="text-sm text-red-600">{error}</p> : null}
+              {info ? <p className={`text-sm ${isDark ? 'text-white/65' : 'text-[var(--muted)]'}`}>{info}</p> : null}
 
               <button
                 disabled={authBusy}
-                className={`sm:col-span-2 rounded-[14px] px-4 py-3 text-sm font-semibold text-white disabled:opacity-60 ${isLogin ? 'bg-[var(--brand-blue)] hover:bg-[var(--brand-rust)]' : 'bg-[var(--brand-rust)] hover:bg-[var(--brand-olive)]'}`}
+                className={`${controlH} ${controlRadius} w-full px-4 text-sm font-semibold text-white disabled:opacity-60 ${isLogin ? 'bg-[var(--brand-blue)] hover:bg-[var(--brand-rust)]' : 'bg-[var(--brand-rust)] hover:bg-[var(--brand-olive)]'}`}
               >
                 {authBusy ? 'Please wait...' : isLogin ? 'Login' : 'Create account'}
               </button>
-
-              <div className={`sm:col-span-2 rounded-[14px] border px-4 py-3 text-xs ${
-                isDark ? 'border-white/12 bg-white/5 text-white/65' : 'border-[var(--line)] bg-[var(--paper-2)] text-[var(--muted)]'
-              }`}>
-                {isLogin ? (
-                  <>
-                    New here?{' '}
-                    <Link to="/auth/register" className={`font-semibold underline ${isDark ? 'text-white' : 'text-black'}`}>
-                      Create an account
-                    </Link>{' '}
-                    as student or instructor.
-                  </>
-                ) : (
-                  <>
-                    Already have an account?{' '}
-                    <Link to="/auth/login" className={`font-semibold underline ${isDark ? 'text-white' : 'text-black'}`}>
-                      Login
-                    </Link>
-                    .
-                  </>
-                )}
-              </div>
             </form>
           </div>
 
-          <div className={`mt-4 rounded-[18px] border p-4 text-xs ${isDark ? 'border-white/10 bg-white/5 text-white/55' : 'border-[var(--line)] bg-white text-[var(--muted)]'}`}>
-            Demo passwords from seeder: Admin12345!, Instructor12345!, Student12345!
+          <div className={`mt-4 rounded-[18px] border p-4 text-xs ${isDark ? 'border-white/10 bg-white/5 text-white/70' : 'border-[var(--line)] bg-white text-[var(--muted)]'}`}>
+            <p className={`font-semibold ${isDark ? 'text-white' : 'text-black'}`}>Demo accounts</p>
+            <div className="mt-2 space-y-1.5">
+              {demoAccounts.map((account) => (
+                <p key={account.email}>
+                  <span className={isDark ? 'text-white/90' : 'text-black/80'}>{account.role}:</span> {account.email} / {account.password}
+                </p>
+              ))}
+            </div>
           </div>
         </div>
       </section>
@@ -3488,15 +3433,80 @@ function MessageCenter({
   role: 'student' | 'instructor' | 'admin' | string
   embedded?: boolean
 }) {
-  const { theme } = useApp()
+  const { theme, token, user } = useApp()
   const isDark = theme === 'dark'
-  const threads = useMemo(() => getDemoThreads(role), [role])
-  const [selectedId, setSelectedId] = useState<string>(threads[0]?.id ?? '')
+  const [threads, setThreads] = useState<any[]>([])
+  const [selectedId, setSelectedId] = useState<number | null>(null)
+  const [activeThread, setActiveThread] = useState<any | null>(null)
   const [sortMode, setSortMode] = useState<'newest' | 'unread'>('newest')
-  const activeThread = threads.find((t) => t.id === selectedId) ?? threads[0]
+  const [draft, setDraft] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [sending, setSending] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const loadThreads = async (preferId?: number | null) => {
+    if (!token) return
+    setLoading(true)
+    setError(null)
+    try {
+      const res = await api.messageThreads(token)
+      const list = res.threads || []
+      setThreads(list)
+      const nextId = preferId ?? selectedId ?? list[0]?.id ?? null
+      setSelectedId(nextId)
+      if (nextId) {
+        const detail = await api.messageThread(nextId, token)
+        setActiveThread(detail.thread)
+      } else {
+        setActiveThread(null)
+      }
+    } catch (err: any) {
+      setError(err?.message || 'Failed to load messages')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    void loadThreads()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, role, user?.id])
+
+  const openThread = async (threadId: number) => {
+    if (!token) return
+    setSelectedId(threadId)
+    setError(null)
+    try {
+      const detail = await api.messageThread(threadId, token)
+      setActiveThread(detail.thread)
+      setThreads((prev) => prev.map((t) => (t.id === threadId ? { ...t, unread: 0 } : t)))
+    } catch (err: any) {
+      setError(err?.message || 'Failed to open thread')
+    }
+  }
+
+  const send = async () => {
+    if (!token || !selectedId || !draft.trim() || sending) return
+    setSending(true)
+    setError(null)
+    try {
+      const res = await api.sendMessage(selectedId, draft.trim(), token)
+      setActiveThread(res.thread)
+      setDraft('')
+      setThreads((prev) => {
+        const others = prev.filter((t) => t.id !== res.thread.id)
+        return [{ ...res.thread, messages: undefined }, ...others]
+      })
+    } catch (err: any) {
+      setError(err?.message || 'Failed to send message')
+    } finally {
+      setSending(false)
+    }
+  }
+
   const orderedThreads = [...threads].sort((a, b) => {
     if (sortMode === 'unread') return (b.unread || 0) - (a.unread || 0)
-    return a.id < b.id ? 1 : -1
+    return String(b.updated_at || '') < String(a.updated_at || '') ? -1 : 1
   })
 
   return (
@@ -3516,12 +3526,13 @@ function MessageCenter({
             <option value="unread">Unread first</option>
           </select>
         </div>
+        {loading && !threads.length ? <p className={`text-sm ${isDark ? 'text-white/60' : 'text-[var(--muted)]'}`}>Loading threads...</p> : null}
         <div className="space-y-2">
           {orderedThreads.map((thread) => (
             <button
               key={thread.id}
               type="button"
-              onClick={() => setSelectedId(thread.id)}
+              onClick={() => void openThread(thread.id)}
               className={`w-full rounded-[12px] border p-3 text-left ${
                 activeThread?.id === thread.id
                   ? isDark
@@ -3533,14 +3544,17 @@ function MessageCenter({
               }`}
             >
               <div className="flex items-start justify-between gap-2">
-                <p className="text-sm font-semibold leading-tight">{thread.title}</p>
+                <p className="text-sm font-semibold leading-tight">{thread.subject}</p>
                 {thread.unread ? <span className="rounded-full bg-[var(--brand)] px-2 py-0.5 text-[10px] font-semibold text-white">{thread.unread}</span> : null}
               </div>
-              <p className={`mt-1 line-clamp-1 text-xs ${isDark ? 'text-white/60' : 'text-[var(--muted)]'}`}>{thread.course}</p>
-              <p className={`mt-2 line-clamp-1 text-xs ${isDark ? 'text-white/60' : 'text-[var(--muted)]'}`}>{thread.participants.join(' · ')}</p>
-              <p className={`mt-1 text-[11px] ${isDark ? 'text-white/50' : 'text-[var(--muted)]'}`}>{thread.updatedAt}</p>
+              <p className={`mt-1 line-clamp-1 text-xs ${isDark ? 'text-white/60' : 'text-[var(--muted)]'}`}>{thread.course_title || 'General'}</p>
+              <p className={`mt-2 line-clamp-1 text-xs ${isDark ? 'text-white/60' : 'text-[var(--muted)]'}`}>{(thread.participants || []).map((p: any) => p.name).join(' · ')}</p>
+              <p className={`mt-1 text-[11px] ${isDark ? 'text-white/50' : 'text-[var(--muted)]'}`}>{thread.updated_at ? new Date(thread.updated_at).toLocaleString() : ''}</p>
             </button>
           ))}
+          {!loading && !orderedThreads.length ? (
+            <p className={`text-sm ${isDark ? 'text-white/60' : 'text-[var(--muted)]'}`}>No conversations yet.</p>
+          ) : null}
         </div>
       </div>
 
@@ -3550,56 +3564,56 @@ function MessageCenter({
             <div className="border-b border-[var(--line)] p-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <p className="text-lg font-bold">{activeThread.title}</p>
-                  <p className={`mt-1 text-xs ${isDark ? 'text-white/60' : 'text-[var(--muted)]'}`}>{activeThread.course} · {activeThread.participants.join(' · ')}</p>
-                </div>
-                <div className="flex gap-2 text-xs">
-                  <button type="button" className={`rounded-full border px-3 py-2 ${isDark ? 'border-white/12 bg-white/5' : 'border-[var(--line)]'}`}>Q&A</button>
-                  <button type="button" className={`rounded-full border px-3 py-2 ${isDark ? 'border-white/12 bg-white/5' : 'border-[var(--line)]'}`}>Assignments</button>
-                  <button type="button" className={`rounded-full border px-3 py-2 ${isDark ? 'border-white/12 bg-white/5' : 'border-[var(--line)]'}`}>Escalate to admin</button>
+                  <p className="text-lg font-bold">{activeThread.subject}</p>
+                  <p className={`mt-1 text-xs ${isDark ? 'text-white/60' : 'text-[var(--muted)]'}`}>
+                    {activeThread.course_title || 'General'} · {(activeThread.participants || []).map((p: any) => p.name).join(' · ')}
+                  </p>
                 </div>
               </div>
             </div>
-            <div className="space-y-3 p-4">
-              {activeThread.messages.map((msg) => {
-                const isMe =
-                  (role === 'student' && msg.role === 'student') ||
-                  (role === 'instructor' && msg.role === 'instructor') ||
-                  (role === 'admin' && msg.role === 'admin')
+            <div className="max-h-[420px] space-y-3 overflow-y-auto p-4">
+              {(activeThread.messages || []).map((msg: any) => {
+                const isMe = Number(msg.user?.id) === Number(user?.id)
                 return (
                   <div key={msg.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
                     <div className={`max-w-[85%] rounded-[14px] border px-3 py-2 ${isMe ? (isDark ? 'border-white bg-white text-black' : 'border-black bg-black text-white') : isDark ? 'border-white/10 bg-white/5 text-white' : 'border-[var(--line)] bg-[var(--paper-2)]'}`}>
                       <p className={`text-[11px] font-semibold uppercase tracking-[0.12em] ${isMe ? (isDark ? 'text-black/65' : 'text-white/75') : isDark ? 'text-white/55' : 'text-[var(--muted)]'}`}>
-                        {msg.author} · {msg.role}
+                        {msg.user?.name || 'User'} · {msg.user?.role || role}
                       </p>
-                      <p className="mt-1 text-sm leading-6">{msg.text}</p>
-                      <p className={`mt-1 text-[11px] ${isMe ? (isDark ? 'text-black/60' : 'text-white/70') : isDark ? 'text-white/50' : 'text-[var(--muted)]'}`}>{msg.time}</p>
+                      <p className="mt-1 text-sm leading-6">{msg.body}</p>
+                      <p className={`mt-1 text-[11px] ${isMe ? (isDark ? 'text-black/60' : 'text-white/70') : isDark ? 'text-white/50' : 'text-[var(--muted)]'}`}>
+                        {msg.created_at ? new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
+                      </p>
                     </div>
                   </div>
                 )
               })}
             </div>
             <div className="border-t border-[var(--line)] p-4">
+              {error ? <p className="mb-2 text-sm text-red-500">{error}</p> : null}
               <div className={`rounded-[14px] border p-3 ${isDark ? 'border-white/10 bg-white/5' : 'border-[var(--line)] bg-[var(--paper-2)]'}`}>
                 <textarea
                   rows={3}
-                  placeholder="Write a message (MVP UI; backend realtime/thread persistence next step)"
+                  value={draft}
+                  onChange={(e) => setDraft(e.target.value)}
+                  placeholder="Write a message..."
                   className={`w-full resize-none bg-transparent text-sm outline-none ${isDark ? 'text-white placeholder:text-white/40' : 'placeholder:text-[var(--muted)]'}`}
                 />
-                <div className="mt-2 flex items-center justify-between gap-3">
-                  <div className="flex gap-2 text-xs">
-                    <button type="button" className={`rounded-full border px-3 py-2 ${isDark ? 'border-white/12 bg-white/5 text-white' : 'border-[var(--line)] bg-white'}`}>Attach</button>
-                    <button type="button" className={`rounded-full border px-3 py-2 ${isDark ? 'border-white/12 bg-white/5 text-white' : 'border-[var(--line)] bg-white'}`}>Homework</button>
-                  </div>
-                  <button type="button" className={`rounded-full px-4 py-2 text-xs font-semibold uppercase tracking-[0.14em] ${isDark ? 'bg-white text-black' : 'bg-black text-white'}`}>
-                    Send
+                <div className="mt-2 flex items-center justify-end gap-3">
+                  <button
+                    type="button"
+                    disabled={sending || !draft.trim()}
+                    onClick={() => void send()}
+                    className={`rounded-full px-4 py-2 text-xs font-semibold uppercase tracking-[0.14em] disabled:opacity-50 ${isDark ? 'bg-white text-black' : 'bg-black text-white'}`}
+                  >
+                    {sending ? 'Sending...' : 'Send'}
                   </button>
                 </div>
               </div>
             </div>
           </>
         ) : (
-          <div className={`p-6 text-sm ${isDark ? 'text-white/60' : 'text-[var(--muted)]'}`}>No messages yet.</div>
+          <div className={`p-6 text-sm ${isDark ? 'text-white/60' : 'text-[var(--muted)]'}`}>{loading ? 'Loading...' : 'No messages yet.'}</div>
         )}
       </div>
     </div>
