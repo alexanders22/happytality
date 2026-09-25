@@ -1,0 +1,63 @@
+# Deploy Happytality to Hostinger VPS on every push to the deploy branch.
+# NeuroKali used manual rsync; this is the git-push equivalent for Happytality.
+#
+# Required GitHub Secrets:
+#   DEPLOY_SSH_KEY   — private key whose public half is in root@148.230.71.98:~/.ssh/authorized_keys
+#   DEPLOY_HOST      — 148.230.71.98 (optional if default below is fine)
+#   DEPLOY_USER      — root (optional)
+
+name: Deploy Hostinger VPS
+
+on:
+  push:
+    branches:
+      - codex/mvp-foundation
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-happytality
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Start ssh-agent
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.DEPLOY_SSH_KEY }}
+
+      - name: Add host key
+        env:
+          HOST: ${{ secrets.DEPLOY_HOST || '148.230.71.98' }}
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -H "$HOST" >> ~/.ssh/known_hosts
+
+      - name: Rsync to VPS
+        env:
+          HOST: ${{ secrets.DEPLOY_HOST || '148.230.71.98' }}
+          USER: ${{ secrets.DEPLOY_USER || 'root' }}
+        run: |
+          rsync -az --delete \
+            --exclude '.git' \
+            --exclude 'frontend/node_modules' \
+            --exclude 'backend/vendor' \
+            --exclude 'backend/node_modules' \
+            --exclude 'frontend/dist' \
+            --exclude 'backend/.env' \
+            --exclude 'frontend/.env' \
+            --exclude 'frontend/.env.*' \
+            ./ "${USER}@${HOST}:/var/www/happytality/"
+
+      - name: Remote build + reload nginx
+        env:
+          HOST: ${{ secrets.DEPLOY_HOST || '148.230.71.98' }}
+          USER: ${{ secrets.DEPLOY_USER || 'root' }}
+        run: |
+          ssh "${USER}@${HOST}" 'bash -s' < deploy/deploy.sh remote-only || \
+          ssh "${USER}@${HOST}" "cd /var/www/happytality && bash deploy/deploy.sh remote-only"
