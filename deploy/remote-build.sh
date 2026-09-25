@@ -10,11 +10,12 @@ mkdir -p /var/www/certbot \
   backend/bootstrap/cache
 
 PHP_SOCK=""
-for s in /run/php/php8.3-fpm.sock /run/php/php8.2-fpm.sock /run/php/php-fpm.sock; do
+for s in /run/php-fpm/www.sock /run/php/php8.3-fpm.sock /run/php/php8.2-fpm.sock /run/php/php-fpm.sock; do
   if [[ -S "$s" ]]; then PHP_SOCK="$s"; break; fi
 done
 if [[ -n "$PHP_SOCK" && -f deploy/nginx.happytality.co.conf ]]; then
-  sed -i "s|/run/php/php8.3-fpm.sock|${PHP_SOCK}|g" deploy/nginx.happytality.co.conf
+  # Normalize any previous sock path to the detected one
+  sed -i -E "s|unix:/run/php[^ ;]*|unix:${PHP_SOCK}|g" deploy/nginx.happytality.co.conf
 fi
 
 if [[ ! -f backend/.env ]]; then
