@@ -339,7 +339,7 @@ class DatabaseSeeder extends Seeder
                             'ru' => 'Lesson summary, practical focus, and key learning objective.',
                         ],
                         'cover_image_url' => $coverPool[($idx + $lessonIndex) % count($coverPool)],
-                        'video_url' => collect(['https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4','https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4','https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4','https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4'])->get((\$lessonIndex - 1) % 4),
+                        'video_url' => collect(['https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4','https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4','https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4','https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4'])->get(($lessonIndex - 1) % 4),
                         'duration_seconds' => 900 + ($lessonIndex * 240),
                         'is_preview' => $lessonIndex === 1,
                         'is_published' => true,
