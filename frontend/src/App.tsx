@@ -188,21 +188,20 @@ const dictionary: Record<ApiLocale, Record<string, string>> = {
   },
 }
 
+// Compact Unsplash params — hero fires many parallel image requests; keep bytes small.
 const heroImages = [
-  'https://images.unsplash.com/photo-1521572267360-ee0c2909d518?auto=format&fit=crop&w=800&q=80',
-  'https://images.unsplash.com/photo-1465146344425-f00d5f5c8f07?auto=format&fit=crop&w=800&q=80',
-  'https://images.unsplash.com/photo-1483985988355-763728e1935b?auto=format&fit=crop&w=800&q=80',
-  'https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&w=800&q=80',
+  'https://images.unsplash.com/photo-1521572267360-ee0c2909d518?auto=format&fit=crop&w=400&q=60',
+  'https://images.unsplash.com/photo-1465146344425-f00d5f5c8f07?auto=format&fit=crop&w=400&q=60',
+  'https://images.unsplash.com/photo-1483985988355-763728e1935b?auto=format&fit=crop&w=400&q=60',
+  'https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&w=400&q=60',
 ]
 
 const heroGalleryImages = [
   ...heroImages,
-  'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=900&q=80',
-  'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=900&q=80',
-  'https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?auto=format&fit=crop&w=900&q=80',
-  'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?auto=format&fit=crop&w=900&q=80',
-  'https://images.unsplash.com/photo-1545239351-1141bd82e8a6?auto=format&fit=crop&w=900&q=80',
-  'https://images.unsplash.com/photo-1521737604893-d14cc237f11d?auto=format&fit=crop&w=900&q=80',
+  'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=400&q=60',
+  'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=400&q=60',
+  'https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?auto=format&fit=crop&w=400&q=60',
+  'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?auto=format&fit=crop&w=400&q=60',
 ]
 
 const fallbackInstructors = [
@@ -311,7 +310,15 @@ function HeroGalleryColumn({
       >
         {doubled.map((src, index) => (
           <div key={`${src}-${index}`} className="mb-3 overflow-hidden rounded-[16px] border border-white/10 bg-black/10">
-            <img src={src} alt="" className="h-[160px] w-full object-cover" loading="lazy" />
+            <img
+              src={src}
+              alt=""
+              className="h-[160px] w-full object-cover"
+              loading="lazy"
+              decoding="async"
+              width={400}
+              height={160}
+            />
           </div>
         ))}
       </div>
@@ -332,12 +339,9 @@ function HeroMovingGallery({ dark = false }: { dark?: boolean }) {
         <div className={`absolute -top-8 right-10 h-24 w-24 rounded-full blur-2xl ${dark ? 'bg-[var(--brand)]/35' : 'bg-[var(--brand)]/20'}`} />
         <div className={`absolute bottom-8 left-6 h-20 w-20 rounded-full blur-2xl ${dark ? 'bg-[var(--accent)]/20' : 'bg-[var(--accent)]/20'}`} />
       </div>
-      <div className="relative grid grid-cols-2 gap-3 md:grid-cols-3">
-        <HeroGalleryColumn images={heroGalleryImages.slice(0, 5)} duration={20} />
-        <HeroGalleryColumn images={heroGalleryImages.slice(3, 8)} duration={24} reverse offset={-4} />
-        <div className="hidden md:block">
-          <HeroGalleryColumn images={heroGalleryImages.slice(6, 11)} duration={18} offset={-7} />
-        </div>
+      <div className="relative grid grid-cols-2 gap-3">
+        <HeroGalleryColumn images={heroGalleryImages.slice(0, 4)} duration={20} />
+        <HeroGalleryColumn images={heroGalleryImages.slice(4, 8)} duration={24} reverse offset={-4} />
       </div>
     </div>
   )
@@ -1127,12 +1131,15 @@ function LandingPage() {
 
   useEffect(() => {
     let cancelled = false
-    Promise.all([api.landing(), api.courses('per_page=12&status=published'), api.instructors('per_page=12')])
-      .then(([landingRes, coursesRes, instructorsRes]) => {
+    // One fast request first (landing already embeds featured courses/instructors).
+    // Defer full catalog fetches so first paint is not blocked by 3 parallel APIs.
+    api
+      .landing()
+      .then((landingRes) => {
         if (cancelled) return
         setLanding(landingRes)
-        if (coursesRes.data.length) setCourses(coursesRes.data)
-        if (instructorsRes.data.length) setInstructors(instructorsRes.data)
+        if (landingRes.featured_courses?.length) setCourses(landingRes.featured_courses as ApiCourse[])
+        if (landingRes.featured_instructors?.length) setInstructors(landingRes.featured_instructors as ApiInstructor[])
       })
       .catch(() => {
         // fallback stays
@@ -1141,8 +1148,21 @@ function LandingPage() {
         if (!cancelled) setLoading(false)
       })
 
+    // Secondary catalog only after first paint / idle — avoid racing hero Unsplash + APIs.
+    const deferCatalog = window.setTimeout(() => {
+      if (cancelled) return
+      Promise.all([api.courses('per_page=12&status=published'), api.instructors('per_page=12')])
+        .then(([coursesRes, instructorsRes]) => {
+          if (cancelled) return
+          if (coursesRes.data.length) setCourses(coursesRes.data)
+          if (instructorsRes.data.length) setInstructors(instructorsRes.data)
+        })
+        .catch(() => {})
+    }, 1500)
+
     return () => {
       cancelled = true
+      window.clearTimeout(deferCatalog)
     }
   }, [])
 
@@ -3050,7 +3070,13 @@ function AboutPage() {
           </div>
         </div>
         <div className="overflow-hidden rounded-[18px] border border-[var(--line)] bg-white">
-          <img src="https://images.unsplash.com/photo-1521737604893-d14cc237f11d?auto=format&fit=crop&w=1400&q=80" alt="Team" className="h-[360px] w-full object-cover" />
+          <img
+            src="https://images.unsplash.com/photo-1521737604893-d14cc237f11d?auto=format&fit=crop&w=900&q=60"
+            alt="Team"
+            className="h-[360px] w-full object-cover"
+            loading="lazy"
+            decoding="async"
+          />
           <div className="p-6">
             <h2 className="text-xl font-bold">Brand direction</h2>
             <p className="mt-3 text-sm leading-7 text-[var(--muted)]">

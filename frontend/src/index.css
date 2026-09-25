@@ -1,5 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Playfair+Display:wght@600;700;800&family=Cormorant+Garamond:wght@500;600;700&display=swap');
-@import url('//cdn.web-fonts.ge/fonts/bpg-nino-mtavruli/css/bpg-nino-mtavruli.min.css');
+/* Fonts loaded async from index.html — never @import blocking CSS (cdn.web-fonts.ge was ~40s). */
 @import "tailwindcss";
 
 :root {
@@ -47,7 +46,7 @@ body {
   background: radial-gradient(circle at 15% 2%, #f8f7f4 0%, transparent 30%),
     radial-gradient(circle at 90% 8%, #f2f7fb 0%, transparent 28%), var(--paper);
   color: var(--ink);
-  font-family: 'Inter', sans-serif;
+  font-family: Inter, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
 }
 
 html[data-theme='dark'] body {
@@ -90,18 +89,15 @@ html:lang(ka) body,
 html:lang(ka) button,
 html:lang(ka) input,
 html:lang(ka) select,
-html:lang(ka) textarea {
-  font-family: 'BPG Nino Mtavruli', sans-serif;
-  letter-spacing: 0.01em;
-}
-
+html:lang(ka) textarea,
 html:lang(ka) h1,
 html:lang(ka) h2,
 html:lang(ka) h3,
 html:lang(ka) h4,
 html:lang(ka) h5,
 html:lang(ka) h6 {
-  font-family: 'BPG Nino Mtavruli', sans-serif;
+  /* Avoid dead CDN web-fonts.ge; system Georgian fallbacks */
+  font-family: Inter, 'Noto Sans Georgian', 'Segoe UI', system-ui, sans-serif;
   letter-spacing: 0.01em;
 }
 
